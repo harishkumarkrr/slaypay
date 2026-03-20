@@ -284,33 +284,39 @@ const BrandLogo = ({ className = "h-20 w-auto" }: { className?: string }) => (
     className={className}
     fill="none"
   >
-    {/* LOGO ICON */}
-    <path d="M40 40L20 120" stroke="#1A1A2E" strokeWidth="16" strokeLinecap="round"/>
-    <path d="M80 40L60 120" stroke="#00C48C" strokeWidth="16" strokeLinecap="round"/>
+    <g transform="translate(250, 0)">
+      {/* Centering logic: Content width is ~440px. Midpoint at 220px. 
+          Shift by -220px to center it in the 500px viewBox. */}
+      <g transform="translate(-220, 0)">
+        {/* LOGO ICON */}
+        <path d="M40 40L20 120" stroke="#1A1A2E" strokeWidth="16" strokeLinecap="round"/>
+        <path d="M80 40L60 120" stroke="#00C48C" strokeWidth="16" strokeLinecap="round"/>
 
-    {/* WORDMARK */}
-    <text
-      x="110"
-      y="108"
-      fontFamily="'Trebuchet MS', 'Arial Black', sans-serif"
-      fontSize="100"
-      fontWeight="700"
-      letterSpacing="-2"
-    >
-      <tspan fill="#1A1A2E">slay</tspan>
-      <tspan fill="#00C48C">pay</tspan>
-    </text>
-    {/* Tagline */}
-    <text
-      x="110"
-      y="142"
-      fontFamily="'Trebuchet MS', sans-serif"
-      fontSize="18.5"
-      fill="#BBBBBB"
-      letterSpacing="2.5"
-    >
-      No gateway. Payments that slay.
-    </text>
+        {/* WORDMARK */}
+        <text
+          x="110"
+          y="108"
+          fontFamily="'Trebuchet MS', 'Arial Black', sans-serif"
+          fontSize="100"
+          fontWeight="700"
+          letterSpacing="-2"
+        >
+          <tspan fill="#1A1A2E">slay</tspan>
+          <tspan fill="#00C48C">pay</tspan>
+        </text>
+        {/* Tagline */}
+        <text
+          x="110"
+          y="142"
+          fontFamily="'Trebuchet MS', sans-serif"
+          fontSize="18.5"
+          fill="#BBBBBB"
+          letterSpacing="2.5"
+        >
+          No gateway. Payments that slay.
+        </text>
+      </g>
+    </g>
   </svg>
 );
 
@@ -327,6 +333,7 @@ function MainApp() {
     return window.innerWidth >= 768;
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -659,6 +666,7 @@ function MainApp() {
 
   const handleGoogleAuth = async () => {
     setAuthError(null);
+    setIsAuthLoading(true);
     try {
       await loginWithGoogle();
       setIsAuthModalOpen(false);
@@ -669,6 +677,8 @@ function MainApp() {
       } else {
         setAuthError(err.message || 'Google sign-in failed. Please try again.');
       }
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -721,9 +731,9 @@ function MainApp() {
             <div className="flex items-center gap-2 sm:gap-4">
               <button 
                 onClick={handleInstallApp} 
-                className="hidden sm:flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors"
+                className="flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors"
               >
-                <Download size={16} /> Install App
+                <Download size={16} /> <span className="hidden sm:inline">Install App</span>
               </button>
               <button 
                 onClick={() => setIsAuthModalOpen(true)} 
@@ -755,6 +765,9 @@ function MainApp() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button onClick={() => setIsAuthModalOpen(true)} className="w-full sm:w-auto px-8 py-4 bg-black text-white rounded-full font-bold text-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2">
                   Sign In / Sign Up <ArrowRight size={16} />
+                </button>
+                <button onClick={handleInstallApp} className="w-full sm:w-auto px-8 py-4 bg-emerald-500 text-white rounded-full font-bold text-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2">
+                  <Download size={16} /> Install App
                 </button>
                 <button onClick={() => navigate('/docs')} className="w-full sm:w-auto px-8 py-4 bg-black/5 text-zinc-900 border border-black/10 rounded-full font-bold text-sm hover:bg-black/10 transition-all flex items-center justify-center gap-2">
                   <Code size={16} /> View Documentation
@@ -905,10 +918,17 @@ function MainApp() {
                 <div className="space-y-3">
                   <button
                     onClick={handleGoogleAuth}
-                    className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3"
+                    disabled={isAuthLoading}
+                    className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3 disabled:opacity-50"
                   >
-                    <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
-                    Continue with Google
+                    {isAuthLoading ? (
+                      <div className="w-5 h-5 border-2 border-zinc-300 border-t-zinc-800 rounded-full animate-spin"></div>
+                    ) : (
+                      <>
+                        <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
+                        Continue with Google
+                      </>
+                    )}
                   </button>
                 </div>
               </motion.div>
@@ -1073,10 +1093,17 @@ function MainApp() {
                 <div className="space-y-3">
                   <button
                     onClick={handleGoogleAuth}
-                    className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3"
+                    disabled={isAuthLoading}
+                    className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3 disabled:opacity-50"
                   >
-                    <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
-                    Continue with Google
+                    {isAuthLoading ? (
+                      <div className="w-5 h-5 border-2 border-zinc-300 border-t-zinc-800 rounded-full animate-spin"></div>
+                    ) : (
+                      <>
+                        <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
+                        Continue with Google
+                      </>
+                    )}
                   </button>
                 </div>
               </motion.div>
@@ -1098,12 +1125,12 @@ function MainApp() {
             {!isSidebarOpen && <BrandLogo className="h-10 md:h-14 w-auto" />}
           </div>
           <div className="flex items-center gap-2">
-            {!isSidebarOpen && (
+            {!isSidebarOpen && !user && (
               <button 
                 onClick={handleInstallApp} 
-                className="hidden sm:flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors mr-2"
+                className="flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors mr-2"
               >
-                <Download size={18} /> Install App
+                <Download size={18} /> <span className="hidden sm:inline">Install App</span>
               </button>
             )}
             <div className="w-8 md:w-10"></div>
@@ -1419,7 +1446,7 @@ function MainApp() {
                                       e.stopPropagation();
                                       handleDelete(product.id);
                                     }}
-                                    className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                                    className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-red-500 hover:bg-red-50 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
                                   >
                                     <Trash2 size={16} />
                                   </button>
@@ -1781,7 +1808,7 @@ function MainApp() {
                           </pre>
                           <button 
                             onClick={() => copyToClipboard(`<script src="${window.location.origin}/embed.js" async></script>\n<div data-nopaymentgateway-id="${resultProductId}"></div>`, 'embed')}
-                            className="absolute right-3 top-3 p-2 bg-brand-50 text-brand-600 rounded-xl hover:bg-brand-100 transition-all opacity-0 group-hover:opacity-100"
+                            className="absolute right-3 top-3 p-2 bg-brand-50 text-brand-600 rounded-xl hover:bg-brand-100 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
                           >
                             {copiedField === 'embed' ? <Check size={16} /> : <Copy size={16} />}
                           </button>
@@ -1857,8 +1884,8 @@ function MainApp() {
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                                 referrerPolicy="no-referrer"
                               />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-600 shadow-xl scale-90 group-hover:scale-100 transition-transform">
+                              <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-600 shadow-xl scale-100 md:scale-90 md:group-hover:scale-100 transition-transform">
                                   <ShoppingBag size={18} />
                                 </div>
                               </div>
