@@ -9,6 +9,7 @@ import {
   Wallet, 
   Building2, 
   Smartphone,
+  Monitor,
   LayoutDashboard,
   Image as ImageIcon,
   Terminal,
@@ -276,19 +277,23 @@ const getTabTitle = (tab: string) => {
   return titleMap[tab] || (tab.charAt(0).toUpperCase() + tab.slice(1));
 };
 
-const BrandLogo = ({ className = "h-14 w-auto" }: { className?: string }) => (
+const BrandLogo = ({ className = "h-20 w-auto" }: { className?: string }) => (
   <svg 
-    viewBox="140 30 320 120" 
+    viewBox="0 0 500 160" 
     xmlns="http://www.w3.org/2000/svg" 
     className={className}
     fill="none"
   >
+    {/* LOGO ICON */}
+    <path d="M40 40L20 120" stroke="#1A1A2E" strokeWidth="16" strokeLinecap="round"/>
+    <path d="M80 40L60 120" stroke="#00C48C" strokeWidth="16" strokeLinecap="round"/>
+
     {/* WORDMARK */}
     <text
-      x="148"
+      x="110"
       y="108"
       fontFamily="'Trebuchet MS', 'Arial Black', sans-serif"
-      fontSize="78"
+      fontSize="100"
       fontWeight="700"
       letterSpacing="-2"
     >
@@ -297,14 +302,14 @@ const BrandLogo = ({ className = "h-14 w-auto" }: { className?: string }) => (
     </text>
     {/* Tagline */}
     <text
-      x="168"
-      y="138"
+      x="110"
+      y="142"
       fontFamily="'Trebuchet MS', sans-serif"
-      fontSize="11.5"
+      fontSize="18.5"
       fill="#BBBBBB"
       letterSpacing="2.5"
     >
-      no gateway. payments that slay.
+      No gateway. Payments that slay.
     </text>
   </svg>
 );
@@ -321,8 +326,9 @@ function MainApp() {
     if (typeof window === 'undefined') return true;
     return window.innerWidth >= 768;
   });
-  const [authSheetMode, setAuthSheetMode] = useState<'signin' | 'signup' | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
@@ -335,11 +341,14 @@ function MainApp() {
   }, []);
 
   const handleInstallApp = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      setShowInstallGuide(true);
     }
   };
   
@@ -652,7 +661,7 @@ function MainApp() {
     setAuthError(null);
     try {
       await loginWithGoogle();
-      setAuthSheetMode(null);
+      setIsAuthModalOpen(false);
     } catch (err: any) {
       console.error('Google sign-in failed:', err);
       if (err.code === 'auth/operation-not-allowed') {
@@ -705,16 +714,22 @@ function MainApp() {
       <div className="min-h-screen bg-white text-zinc-900 selection:bg-emerald-500/30 font-sans overflow-y-auto flex flex-col">
         {/* Navigation */}
         <nav className="fixed top-0 w-full z-50 border-b border-black/5 bg-white/80 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 sm:h-24 flex items-center justify-between">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-              <BrandLogo className="h-14 w-auto" />
+              <BrandLogo className="h-12 sm:h-20 w-auto" />
             </div>
-            <div className="flex items-center gap-4">
-              <button onClick={() => setAuthSheetMode('signin')} className="text-sm font-medium hover:text-emerald-400 transition-colors">
-                Sign In
+            <div className="flex items-center gap-2 sm:gap-4">
+              <button 
+                onClick={handleInstallApp} 
+                className="hidden sm:flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors"
+              >
+                <Download size={16} /> Install App
               </button>
-              <button onClick={() => setAuthSheetMode('signup')} className="px-5 py-2 bg-black text-white rounded-full text-sm font-bold hover:bg-zinc-800 transition-all">
-                Sign Up
+              <button 
+                onClick={() => setIsAuthModalOpen(true)} 
+                className="px-4 sm:px-6 py-2 bg-black text-white rounded-full text-xs sm:text-sm font-bold hover:bg-zinc-800 transition-all whitespace-nowrap"
+              >
+                Sign In / Sign Up
               </button>
             </div>
           </div>
@@ -738,8 +753,8 @@ function MainApp() {
                 The ultimate hosted checkout for creators and indie hackers. Accept UPI, Bank Transfers, and Crypto with zero platform fees.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button onClick={() => setAuthSheetMode('signup')} className="w-full sm:w-auto px-8 py-4 bg-black text-white rounded-full font-bold text-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2">
-                  Start Processing <ArrowRight size={16} />
+                <button onClick={() => setIsAuthModalOpen(true)} className="w-full sm:w-auto px-8 py-4 bg-black text-white rounded-full font-bold text-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2">
+                  Sign In / Sign Up <ArrowRight size={16} />
                 </button>
                 <button onClick={() => navigate('/docs')} className="w-full sm:w-auto px-8 py-4 bg-black/5 text-zinc-900 border border-black/10 rounded-full font-bold text-sm hover:bg-black/10 transition-all flex items-center justify-center gap-2">
                   <Code size={16} /> View Documentation
@@ -777,7 +792,7 @@ function MainApp() {
         <footer className="border-t border-black/5 py-12 px-6 bg-zinc-50">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="flex items-center gap-2">
-              <BrandLogo className="h-14 w-auto" />
+              <BrandLogo className="h-20 w-auto" />
             </div>
             <div className="flex flex-wrap justify-center gap-8 text-sm font-medium text-zinc-500">
               <Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link>
@@ -789,13 +804,79 @@ function MainApp() {
         </footer>
 
         <AnimatePresence>
-          {authSheetMode && (
+          {showInstallGuide && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowInstallGuide(false)}
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl overflow-hidden"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-black tracking-tight">Install App</h3>
+                  <button onClick={() => setShowInstallGuide(false)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Smartphone size={20} className="text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm mb-1">iOS (Safari)</p>
+                      <p className="text-xs text-zinc-500">Tap the <span className="font-bold text-zinc-900">Share</span> icon below and select <span className="font-bold text-zinc-900">"Add to Home Screen"</span>.</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Globe size={20} className="text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm mb-1">Android (Chrome)</p>
+                      <p className="text-xs text-zinc-500">Tap the <span className="font-bold text-zinc-900">Menu</span> (three dots) and select <span className="font-bold text-zinc-900">"Install App"</span> or <span className="font-bold text-zinc-900">"Add to Home Screen"</span>.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Monitor size={20} className="text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm mb-1">Desktop</p>
+                      <p className="text-xs text-zinc-500">Look for the <span className="font-bold text-zinc-900">Install</span> icon in your browser's address bar.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setShowInstallGuide(false)}
+                  className="w-full mt-8 py-4 bg-black text-white rounded-2xl font-bold text-sm hover:bg-zinc-800 transition-all"
+                >
+                  Got it
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isAuthModalOpen && (
             <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => setAuthSheetMode(null)}
+                onClick={() => setIsAuthModalOpen(false)}
                 className="absolute inset-0 bg-black/40 backdrop-blur-sm"
               />
               <motion.div
@@ -805,15 +886,13 @@ function MainApp() {
                 className="relative z-[121] w-full max-w-md bg-white border border-black/10 rounded-3xl shadow-2xl p-6"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-zinc-900">
-                    {authSheetMode === 'signup' ? 'Create Your Account' : 'Welcome Back'}
-                  </h3>
-                  <button onClick={() => setAuthSheetMode(null)} className="text-zinc-500 hover:text-zinc-900">
+                  <h3 className="text-lg font-bold text-zinc-900">Sign In / Sign Up</h3>
+                  <button onClick={() => setIsAuthModalOpen(false)} className="text-zinc-500 hover:text-zinc-900">
                     <X size={18} />
                   </button>
                 </div>
                 <p className="text-sm text-zinc-500 mb-5">
-                  {authSheetMode === 'signup' ? 'Sign up using your preferred account:' : 'Sign in using your preferred account:'}
+                  Sign in or create an account using Google:
                 </p>
 
                 {authError && (
@@ -829,7 +908,7 @@ function MainApp() {
                     className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3"
                   >
                     <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
-                    {authSheetMode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
+                    Continue with Google
                   </button>
                 </div>
               </motion.div>
@@ -860,11 +939,11 @@ function MainApp() {
               exit={{ x: -280 }}
               className="w-[280px] border-r border-black/10 bg-zinc-50 flex flex-col z-40 fixed md:relative h-full left-0 top-0"
             >
-              <div className="p-6 flex items-center justify-between">
+              <div className="p-6 flex items-center justify-center relative">
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-                  <BrandLogo className="h-14 md:h-16 w-auto" />
+                  <BrandLogo className="h-16 md:h-20 w-auto" />
                 </div>
-                <button className="md:hidden p-2 -mr-2 text-zinc-500 hover:text-zinc-900" onClick={() => setIsSidebarOpen(false)}>
+                <button className="md:hidden absolute right-6 p-2 text-zinc-500 hover:text-zinc-900" onClick={() => setIsSidebarOpen(false)}>
                   <X size={24} />
                 </button>
               </div>
@@ -884,17 +963,15 @@ function MainApp() {
                 <NavItem icon={ShieldCheck} label="Terms & Conditions" tab="terms" />
                 <NavItem icon={Lock} label="Privacy Policy" tab="privacy" />
 
-                {deferredPrompt && (
-                  <div className="pt-6 px-4">
-                    <button
-                      onClick={handleInstallApp}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
-                    >
-                      <Download size={18} />
-                      <span>Install App</span>
-                    </button>
-                  </div>
-                )}
+                <div className="pt-6 px-4">
+                  <button
+                    onClick={handleInstallApp}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
+                  >
+                    <Download size={18} />
+                    <span>Install App</span>
+                  </button>
+                </div>
               </nav>
 
             <div className="p-4">
@@ -946,14 +1023,12 @@ function MainApp() {
               ) : (
                 <div className="bg-white border border-black/5 rounded-2xl p-4 mb-4">
                   <p className="text-xs text-zinc-500 mb-3 text-center">Sign in to access your dashboard</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setAuthSheetMode('signin')} className="w-full py-2 bg-black text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors">
-                      Sign In
-                    </button>
-                    <button onClick={() => setAuthSheetMode('signup')} className="w-full py-2 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-black transition-colors">
-                      Sign Up
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => setIsAuthModalOpen(true)} 
+                    className="w-full py-2.5 bg-black text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors"
+                  >
+                    Sign In / Sign Up
+                  </button>
                 </div>
               )}
             </div>
@@ -962,55 +1037,77 @@ function MainApp() {
       )}
     </AnimatePresence>
 
-      <AnimatePresence>
-        {authSheetMode && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setAuthSheetMode(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              className="relative z-[121] w-full max-w-md bg-white border border-black/10 rounded-3xl shadow-2xl p-6"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-zinc-900">
-                  {authSheetMode === 'signup' ? 'Create Your Account' : 'Welcome Back'}
-                </h3>
-                <button onClick={() => setAuthSheetMode(null)} className="text-zinc-500 hover:text-zinc-900">
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="text-sm text-zinc-500 mb-5">
-                {authSheetMode === 'signup' ? 'Sign up using your preferred account:' : 'Sign in using your preferred account:'}
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={handleGoogleAuth}
-                  className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3"
-                >
-                  <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
-                  {authSheetMode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {isAuthModalOpen && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsAuthModalOpen(false)}
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                className="relative z-[121] w-full max-w-md bg-white border border-black/10 rounded-3xl shadow-2xl p-6"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-zinc-900">Sign In / Sign Up</h3>
+                  <button onClick={() => setIsAuthModalOpen(false)} className="text-zinc-500 hover:text-zinc-900">
+                    <X size={18} />
+                  </button>
+                </div>
+                <p className="text-sm text-zinc-500 mb-5">
+                  Sign in or create an account using Google:
+                </p>
+
+                {authError && (
+                  <div className="mb-5 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3">
+                    <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-600 leading-relaxed font-medium">{authError}</p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleGoogleAuth}
+                    className="w-full py-3 px-4 bg-white border border-black/10 rounded-xl text-sm font-bold text-zinc-800 hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-[12px] font-black text-zinc-700">G</span>
+                    Continue with Google
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto relative">
-        <header className="h-14 border-b border-black/10 flex items-center px-6 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-          {!isSidebarOpen && (
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-zinc-500 hover:text-zinc-900">
-              <Menu size={24} />
-            </button>
-          )}
+        <header className="h-16 md:h-20 border-b border-black/10 flex items-center justify-between px-4 md:px-6 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+          <div className="flex items-center">
+            {!isSidebarOpen && (
+              <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-zinc-500 hover:text-zinc-900">
+                <Menu size={24} />
+              </button>
+            )}
+          </div>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            {!isSidebarOpen && <BrandLogo className="h-10 md:h-14 w-auto" />}
+          </div>
+          <div className="flex items-center gap-2">
+            {!isSidebarOpen && (
+              <button 
+                onClick={handleInstallApp} 
+                className="hidden sm:flex items-center gap-2 text-sm font-bold text-emerald-500 hover:text-emerald-600 transition-colors mr-2"
+              >
+                <Download size={18} /> Install App
+              </button>
+            )}
+            <div className="w-8 md:w-10"></div>
+          </div>
         </header>
 
         <div className="p-6 md:p-10 max-w-6xl mx-auto w-full">
@@ -1050,7 +1147,7 @@ function MainApp() {
                     </div>
 
                     {hostedProduct.coverImage && (
-                      <div className="aspect-video w-full rounded-[2rem] overflow-hidden mb-8 shadow-xl shadow-black/5">
+                      <div className="aspect-[16/9] md:aspect-[21/9] w-full max-w-md md:max-w-none mx-auto rounded-2xl md:rounded-[2rem] overflow-hidden mb-8 shadow-xl shadow-black/5">
                         <img 
                           src={hostedProduct.coverImage} 
                           alt={hostedProduct.itemName}
@@ -1310,7 +1407,7 @@ function MainApp() {
                               key={product.id} 
                               className="premium-card group overflow-hidden flex flex-col"
                             >
-                              <div className="aspect-square relative overflow-hidden bg-zinc-50">
+                              <div className="aspect-[21/9] md:aspect-[16/10] relative overflow-hidden bg-zinc-50">
                                 <img 
                                   src={product.data.coverImage} 
                                   alt={product.data.itemName} 
@@ -1437,7 +1534,7 @@ function MainApp() {
                       </h3>
                       <div 
                         onClick={() => fileInputRef.current?.click()}
-                        className={`relative aspect-video rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 ${coverImage ? 'border-brand-500 bg-brand-50/30' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-300'}`}
+                        className={`relative aspect-[21/9] max-h-32 md:max-h-none rounded-2xl md:rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 ${coverImage ? 'border-brand-500 bg-brand-50/30' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-300'}`}
                       >
                         <input 
                           type="file" 
@@ -1746,14 +1843,14 @@ function MainApp() {
                           <div className="w-2.5 h-2.5 rounded-full bg-zinc-300"></div>
                         </div>
                         <div className="mx-auto bg-white border border-black/[0.05] rounded-full px-4 py-1 text-[10px] text-zinc-400 font-mono flex items-center gap-2">
-                          <Lock size={10} /> slaypay.xyz/s/{user.displayName?.toLowerCase().replace(/\s+/g, '') || 'store'}
+                          <Lock size={10} /> slaypay.xyz/s/{user?.displayName?.toLowerCase().replace(/\s+/g, '') || 'store'}
                         </div>
                       </div>
 
                       <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-6 max-h-[600px] overflow-y-auto">
                         {products.map((product) => (
                           <div key={product.id} className="group cursor-pointer" onClick={() => handleImageClick(product.data)}>
-                            <div className="relative overflow-hidden rounded-2xl mb-4 bg-white aspect-square shadow-sm border border-black/[0.03]">
+                            <div className="relative overflow-hidden rounded-2xl mb-4 bg-white aspect-[16/10] shadow-sm border border-black/[0.03]">
                               <img 
                                 src={product.data.coverImage} 
                                 alt={product.data.itemName} 

@@ -8,7 +8,7 @@
   "theme_color": "#10B981",
   "icons": [
     {
-      "src": "/slaypay-logo-v9.svg",
+      "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
