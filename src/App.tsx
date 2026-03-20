@@ -377,6 +377,11 @@ function MainApp() {
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data() as PaymentPayload;
+            if (data.status === 'paused') {
+              setError("This product is currently paused.");
+              setHostedLoading(false);
+              return;
+            }
             const createdAt = data.createdAt?.seconds * 1000;
             if (createdAt && Date.now() - createdAt > 5 * 60 * 1000) {
               setError("This payment link has expired. Please reload the page to request a new one.");
@@ -385,6 +390,8 @@ function MainApp() {
             }
             setHostedProduct(data);
             await updateDoc(docRef, { views: increment(1) });
+          } else {
+            setError("Product not found.");
           }
         } catch (err) {
           console.error("Error fetching hosted product:", err);
