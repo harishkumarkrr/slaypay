@@ -382,8 +382,7 @@ function MainApp() {
               setHostedLoading(false);
               return;
             }
-            const createdAt = data.createdAt?.seconds * 1000;
-            if (createdAt && Date.now() - createdAt > 5 * 60 * 1000) {
+            if (data.expiresAt && Date.now() > data.expiresAt) {
               setError("This payment link has expired. Please reload the page to request a new one.");
               setHostedLoading(false);
               return;
@@ -672,6 +671,22 @@ function MainApp() {
     try {
       const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
       await setDoc(doc(db, 'products', id), { status: nextStatus }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
+    }
+  };
+
+  const handleEnableForever = async (id: string) => {
+    try {
+      await setDoc(doc(db, 'products', id), { expiresAt: null, status: 'active' }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
+    }
+  };
+
+  const handleExtend24h = async (id: string) => {
+    try {
+      await setDoc(doc(db, 'products', id), { expiresAt: Date.now() + (24 * 60 * 60 * 1000), status: 'active' }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
     }
@@ -1539,55 +1554,81 @@ function MainApp() {
                                   <p className="text-sm font-bold text-zinc-900">{product.data.currency} {product.data.amount}</p>
                                   <p className="text-[11px] font-mono text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-md">{product.data.views || 0} views</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 mt-4">
-                                  <button 
-                                    onClick={() => handleToggleStatus(product.id, currentStatus)}
-                                    className={`py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                                      currentStatus === 'active'
-                                        ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
-                                        : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                                    }`}
-                                  >
-                                    {currentStatus === 'active' ? 'Pause' : 'Activate'}
-                                  </button>
+                                <div className="flex flex-col gap-2 mt-4">
                                   <button 
                                     onClick={() => {
                                       setCheckoutData(product.data);
                                       setIsCheckoutOpen(true);
                                     }}
-                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
                                   >
-                                    Preview
+                                    Checkout Preview
                                   </button>
-                                  <button 
-                                    onClick={() => {
-                                      const shareUrl = getShareUrl(product.id);
-                                      navigator.clipboard.writeText(shareUrl);
-                                      setCopiedField(`copy-${product.id}`);
-                                      setTimeout(() => setCopiedField(null), 2000);
-                                    }}
-                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                  >
-                                    {copiedField === `copy-${product.id}` ? (
-                                      <><Check size={14} className="text-emerald-500" /> Copied</>
-                                    ) : (
-                                      <><Copy size={14} /> Copy</>
-                                    )}
-                                  </button>
-                                  <button
-                                    onClick={() => handleShareNative(product.data, product.id)}
-                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                  >
-                                    <Share2 size={14} />
-                                    Share
-                                  </button>
-                                  <button 
-                                    onClick={() => copyToClipboard(`<script src="${window.location.origin}/embed.js" async></script>\n<div data-nopaymentgateway-id="${product.id}"></div>`, product.id)}
-                                    className="col-span-2 py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                  >
-                                    {copiedField === product.id ? <Check size={12} className="text-brand-500" /> : <Copy size={12} />}
-                                    {copiedField === product.id ? 'Copied!' : 'Embed'}
-                                  </button>
+
+                                  {expired ? (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button 
+                                        onClick={() => handleEnableForever(product.id)}
+                                        className="py-2.5 rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                      >
+                                        Enable Forever
+                                      </button>
+                                      <button 
+                                        onClick={() => handleExtend24h(product.id)}
+                                        className="py-2.5 rounded-xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                      >
+                                        Extend 24 hrs
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button 
+                                      onClick={() => handleToggleStatus(product.id, currentStatus)}
+                                      className={`w-full py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                        currentStatus === 'active'
+                                          ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                          : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                      }`}
+                                    >
+                                      {currentStatus === 'active' ? 'Pause Product' : 'Activate Product'}
+                                    </button>
+                                  )}
+
+                                  <div className="grid grid-cols-3 gap-2 mt-1">
+                                    <button 
+                                      onClick={() => {
+                                        const shareUrl = getShareUrl(product.id);
+                                        navigator.clipboard.writeText(shareUrl);
+                                        setCopiedField(`copy-${product.id}`);
+                                        setTimeout(() => setCopiedField(null), 2000);
+                                      }}
+                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                    >
+                                      {copiedField === `copy-${product.id}` ? (
+                                        <Check size={16} className="text-emerald-500" />
+                                      ) : (
+                                        <Copy size={16} />
+                                      )}
+                                      <span className="text-[10px] font-bold uppercase tracking-wider">Link</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleShareNative(product.data, product.id)}
+                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                    >
+                                      <Share2 size={16} />
+                                      <span className="text-[10px] font-bold uppercase tracking-wider">Share</span>
+                                    </button>
+                                    <button 
+                                      onClick={() => copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id)}
+                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                    >
+                                      {copiedField === product.id ? (
+                                        <Check size={16} className="text-emerald-500" />
+                                      ) : (
+                                        <Code size={16} />
+                                      )}
+                                      <span className="text-[10px] font-bold uppercase tracking-wider">Embed</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </motion.div>
