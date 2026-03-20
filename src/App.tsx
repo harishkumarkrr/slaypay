@@ -41,8 +41,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, loginWithGoogle, logout } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot, increment, updateDoc } from 'firebase/firestore';
 
 enum OperationType {
   CREATE = 'create',
@@ -144,6 +144,7 @@ interface PaymentPayload {
   createdAt?: any;
   status?: 'active' | 'paused';
   expiresAt?: number | null;
+  views?: number;
 }
 
 const isHttpUrl = (value: string) => /^https?:\/\/\S+$/i.test(value.trim());
@@ -375,7 +376,15 @@ function MainApp() {
           const docRef = doc(db, 'products', hostedProductId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setHostedProduct(docSnap.data() as PaymentPayload);
+            const data = docSnap.data() as PaymentPayload;
+            const createdAt = data.createdAt?.seconds * 1000;
+            if (createdAt && Date.now() - createdAt > 5 * 60 * 1000) {
+              setError("This payment link has expired. Please reload the page to request a new one.");
+              setHostedLoading(false);
+              return;
+            }
+            setHostedProduct(data);
+            await updateDoc(docRef, { views: increment(1) });
           }
         } catch (err) {
           console.error("Error fetching hosted product:", err);
@@ -435,11 +444,42 @@ function MainApp() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutData, setCheckoutData] = useState<PaymentPayload | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
 
   // Test Embed State
   const [testProductId, setTestProductId] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  // Auto-logout after 2 hours of inactivity
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        signOut(auth);
+        window.location.reload();
+      }, 2 * 60 * 60 * 1000); // 2 hours
+    };
+
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    resetTimer();
+
+    return () => {
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -576,7 +616,7 @@ function MainApp() {
       setAutoExpire24h(false);
       
       // Success feedback
-      alert('Product created successfully! You can now find it in your dashboard.');
+      setNotification({ message: 'Product created successfully! You can now find it in your dashboard.', type: 'success' });
       navigate('/dashboard');
       
     } catch (err: any) {
@@ -1113,6 +1153,12 @@ function MainApp() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto relative">
+        {notification && (
+          <div className={`fixed bottom-4 right-4 p-4 rounded-xl shadow-lg z-50 ${notification.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+            {notification.message}
+            <button onClick={() => setNotification(null)} className="ml-4 text-white font-bold">X</button>
+          </div>
+        )}
         <header className="h-16 md:h-20 border-b border-black/10 flex items-center justify-between px-4 md:px-6 bg-white/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center">
             {!isSidebarOpen && (
@@ -1188,7 +1234,6 @@ function MainApp() {
                       {hostedProduct.itemName}
                     </h1>
                     <p className="text-zinc-500 text-lg mb-8 leading-relaxed">
-                      Secure payment request from <span className="font-bold text-zinc-900">{hostedProduct.merchantName}</span>. 
                       Payment instructions are delivered over secure HTTPS, and payment is completed in your selected external app.
                     </p>
 
@@ -1400,16 +1445,27 @@ function MainApp() {
           )}
 
           {activeTab === 'dashboard' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10 pb-20">
               
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                   <h2 className="text-3xl font-display font-bold text-zinc-900">Your Products</h2>
                   <p className="text-zinc-500 mt-1">Manage your active payment links and embed codes.</p>
                 </div>
-                <button onClick={() => navigate('/create')} className="premium-button premium-button-brand flex items-center gap-2 self-start md:self-auto">
-                  <ImageIcon size={18} /> New Product
-                </button>
+                <div className="flex items-center gap-4">
+                  <select 
+                    value={sortOrder} 
+                    onChange={(e) => setSortOrder(e.target.value as any)} 
+                    className="text-sm border border-zinc-200 rounded-lg p-2 bg-white"
+                  >
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="name">Name</option>
+                  </select>
+                  <button onClick={() => navigate('/create')} className="premium-button premium-button-brand flex items-center gap-2 self-start md:self-auto">
+                    <ImageIcon size={18} /> New Product
+                  </button>
+                </div>
               </div>
 
               {products.length === 0 ? (
@@ -1425,7 +1481,12 @@ function MainApp() {
                 </div>
               ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                          {products.map((product) => {
+                          {[...products].sort((a, b) => {
+                            if (sortOrder === 'newest') return (b.data.createdAt?.seconds || 0) - (a.data.createdAt?.seconds || 0);
+                            if (sortOrder === 'oldest') return (a.data.createdAt?.seconds || 0) - (b.data.createdAt?.seconds || 0);
+                            if (sortOrder === 'name') return a.data.itemName.localeCompare(b.data.itemName);
+                            return 0;
+                          }).map((product) => {
                             const currentStatus = (product.data.status ?? 'active') as 'active' | 'paused';
                             const expired = isProductExpired(product.data);
                             return (
@@ -1456,7 +1517,7 @@ function MainApp() {
                                 <div className="flex items-start justify-between gap-4 mb-4">
                                   <div>
                                     <h3 className="font-display font-bold text-zinc-900 text-lg leading-tight">{product.data.itemName}</h3>
-                                    <p className="text-sm text-zinc-500 mt-1">{product.data.currency} {product.data.amount}</p>
+                                    <p className="text-sm text-zinc-500 mt-1">{product.data.currency} {product.data.amount} • {product.data.views || 0} views</p>
                                   </div>
                                   <div className={`px-2 py-1 text-[10px] font-bold uppercase rounded-md border ${
                                     expired
@@ -1534,12 +1595,6 @@ function MainApp() {
           {/* CREATE TAB */}
           {activeTab === 'create' && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto">
-              {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-medium">
-                  <AlertCircle size={18} />
-                  {error}
-                </div>
-              )}
               <div className="premium-card p-10">
               
                 <div className="flex items-center gap-4 mb-10">
@@ -1774,6 +1829,12 @@ function MainApp() {
                 </div>
 
                 <div className="mt-12 pt-8 border-t border-black/[0.03]">
+                  {error && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-medium">
+                      <AlertCircle size={18} />
+                      {error}
+                    </div>
+                  )}
                   <button 
                     onClick={handleCreateProduct}
                     disabled={loading}
