@@ -1,0 +1,17 @@
+{
+  "name": "slaypay",
+  "short_name": "slaypay",
+  "description": "slaypay hosted payment links",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F5F5",
+  "theme_color": "#10B981",
+  "icons": [
+    {
+      "src": "/slaypay-logo-v9.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
