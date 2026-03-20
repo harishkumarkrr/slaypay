@@ -1560,7 +1560,7 @@ function MainApp() {
                                       setCheckoutData(product.data);
                                       setIsCheckoutOpen(true);
                                     }}
-                                    className="w-full py-2 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-2 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-indigo-600 hover:shadow-md hover:shadow-indigo-500/20 transition-all duration-300 flex items-center justify-center gap-2"
                                   >
                                     Checkout Preview
                                   </button>
@@ -1569,13 +1569,13 @@ function MainApp() {
                                     <div className="grid grid-cols-2 gap-1.5">
                                       <button 
                                         onClick={() => handleEnableForever(product.id)}
-                                        className="py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
+                                        className="py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5"
                                       >
                                         Enable Forever
                                       </button>
                                       <button 
                                         onClick={() => handleExtend24h(product.id)}
-                                        className="py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
+                                        className="py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-500 hover:text-white hover:border-amber-500 text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5"
                                       >
                                         Extend 24 hrs
                                       </button>
@@ -1583,10 +1583,10 @@ function MainApp() {
                                   ) : (
                                     <button 
                                       onClick={() => handleToggleStatus(product.id, currentStatus)}
-                                      className={`w-full py-2 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                      className={`w-full py-2 rounded-lg border text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
                                         currentStatus === 'active'
-                                          ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
-                                          : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                          ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-500 hover:text-white hover:border-amber-500'
+                                          : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
                                       }`}
                                     >
                                       {currentStatus === 'active' ? 'Pause Product' : 'Activate Product'}
@@ -1601,7 +1601,7 @@ function MainApp() {
                                         setCopiedField(`copy-${product.id}`);
                                         setTimeout(() => setCopiedField(null), 2000);
                                       }}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
                                     >
                                       {copiedField === `copy-${product.id}` ? (
                                         <Check size={14} className="text-emerald-500" />
@@ -1612,14 +1612,14 @@ function MainApp() {
                                     </button>
                                     <button
                                       onClick={() => handleShareNative(product.data, product.id)}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
                                     >
                                       <Share2 size={14} />
                                       <span className="text-[9px] font-bold uppercase tracking-wider">Share</span>
                                     </button>
                                     <button 
                                       onClick={() => copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id)}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
                                     >
                                       {copiedField === product.id ? (
                                         <Check size={14} className="text-emerald-500" />
