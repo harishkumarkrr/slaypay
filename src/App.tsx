@@ -1502,7 +1502,7 @@ function MainApp() {
                   </button>
                 </div>
               ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                           {[...products].sort((a, b) => {
                             if (sortOrder === 'newest') return (b.data.createdAt?.seconds || 0) - (a.data.createdAt?.seconds || 0);
                             if (sortOrder === 'oldest') return (a.data.createdAt?.seconds || 0) - (b.data.createdAt?.seconds || 0);
@@ -1515,9 +1515,9 @@ function MainApp() {
                             <motion.div 
                               layout
                               key={product.id} 
-                              className="group flex flex-col bg-white border border-black/[0.05] rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
+                              className="group flex flex-col bg-white border border-black/[0.05] rounded-xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
                             >
-                              <div className="aspect-[16/10] relative overflow-hidden bg-zinc-100">
+                              <div className="h-32 relative overflow-hidden bg-zinc-100">
                                 <img 
                                   src={product.data.coverImage} 
                                   alt={product.data.itemName} 
@@ -1525,22 +1525,22 @@ function MainApp() {
                                   referrerPolicy="no-referrer"
                                 />
                                 <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <div className="absolute top-3 right-3 flex gap-2">
+                                <div className="absolute top-2 right-2 flex gap-2">
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDelete(product.id);
                                     }}
-                                    className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm"
+                                    className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm"
                                   >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={14} />
                                   </button>
                                 </div>
                               </div>
-                              <div className="p-5 flex-1 flex flex-col">
-                                <div className="flex items-start justify-between gap-3 mb-3">
-                                  <h3 className="font-display font-bold text-zinc-900 text-lg leading-tight truncate">{product.data.itemName}</h3>
-                                  <div className={`px-2 py-1 text-[10px] font-bold uppercase rounded-lg border ${
+                              <div className="p-4 flex-1 flex flex-col">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <h3 className="font-display font-bold text-zinc-900 text-base leading-tight truncate">{product.data.itemName}</h3>
+                                  <div className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded border ${
                                     expired
                                       ? 'bg-red-50 text-red-600 border-red-100'
                                       : currentStatus === 'active'
@@ -1550,32 +1550,32 @@ function MainApp() {
                                     {expired ? 'Expired' : currentStatus === 'active' ? 'Active' : 'Paused'}
                                   </div>
                                 </div>
-                                <div className="mt-auto flex items-center justify-between pt-4 border-t border-zinc-100">
+                                <div className="mt-auto flex items-center justify-between pt-3 border-t border-zinc-100">
                                   <p className="text-sm font-bold text-zinc-900">{product.data.currency} {product.data.amount}</p>
-                                  <p className="text-[11px] font-mono text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-md">{product.data.views || 0} views</p>
+                                  <p className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded">{product.data.views || 0} views</p>
                                 </div>
-                                <div className="flex flex-col gap-2 mt-4">
+                                <div className="flex flex-col gap-1.5 mt-3">
                                   <button 
                                     onClick={() => {
                                       setCheckoutData(product.data);
                                       setIsCheckoutOpen(true);
                                     }}
-                                    className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-2 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
                                   >
                                     Checkout Preview
                                   </button>
 
                                   {expired ? (
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-2 gap-1.5">
                                       <button 
                                         onClick={() => handleEnableForever(product.id)}
-                                        className="py-2.5 rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                        className="py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
                                       >
                                         Enable Forever
                                       </button>
                                       <button 
                                         onClick={() => handleExtend24h(product.id)}
-                                        className="py-2.5 rounded-xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                        className="py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
                                       >
                                         Extend 24 hrs
                                       </button>
@@ -1583,7 +1583,7 @@ function MainApp() {
                                   ) : (
                                     <button 
                                       onClick={() => handleToggleStatus(product.id, currentStatus)}
-                                      className={`w-full py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                      className={`w-full py-2 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                                         currentStatus === 'active'
                                           ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
                                           : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
@@ -1593,7 +1593,7 @@ function MainApp() {
                                     </button>
                                   )}
 
-                                  <div className="grid grid-cols-3 gap-2 mt-1">
+                                  <div className="grid grid-cols-3 gap-1.5 mt-0.5">
                                     <button 
                                       onClick={() => {
                                         const shareUrl = getShareUrl(product.id);
@@ -1601,35 +1601,36 @@ function MainApp() {
                                         setCopiedField(`copy-${product.id}`);
                                         setTimeout(() => setCopiedField(null), 2000);
                                       }}
-                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
                                     >
                                       {copiedField === `copy-${product.id}` ? (
-                                        <Check size={16} className="text-emerald-500" />
+                                        <Check size={14} className="text-emerald-500" />
                                       ) : (
-                                        <Copy size={16} />
+                                        <Copy size={14} />
                                       )}
-                                      <span className="text-[10px] font-bold uppercase tracking-wider">Link</span>
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Link</span>
                                     </button>
                                     <button
                                       onClick={() => handleShareNative(product.data, product.id)}
-                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
                                     >
-                                      <Share2 size={16} />
-                                      <span className="text-[10px] font-bold uppercase tracking-wider">Share</span>
+                                      <Share2 size={14} />
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Share</span>
                                     </button>
                                     <button 
                                       onClick={() => copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id)}
-                                      className="py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-1"
+                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all flex flex-col items-center justify-center gap-0.5"
                                     >
                                       {copiedField === product.id ? (
-                                        <Check size={16} className="text-emerald-500" />
+                                        <Check size={14} className="text-emerald-500" />
                                       ) : (
-                                        <Code size={16} />
+                                        <Code size={14} />
                                       )}
-                                      <span className="text-[10px] font-bold uppercase tracking-wider">Embed</span>
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Embed</span>
                                     </button>
                                   </div>
                                 </div>
+
                               </div>
                             </motion.div>
                           )})}
