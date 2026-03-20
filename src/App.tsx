@@ -1493,95 +1493,93 @@ function MainApp() {
                             <motion.div 
                               layout
                               key={product.id} 
-                              className="premium-card group overflow-hidden flex flex-col"
+                              className="group flex flex-col bg-white border border-black/[0.05] rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
                             >
-                              <div className="aspect-[21/9] md:aspect-[16/10] relative overflow-hidden bg-zinc-50">
+                              <div className="aspect-[16/10] relative overflow-hidden bg-zinc-100">
                                 <img 
                                   src={product.data.coverImage} 
                                   alt={product.data.itemName} 
-                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                                  referrerPolicy="no-referrer"
                                 />
-                                <div className="absolute top-4 right-4 flex gap-2">
+                                <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute top-3 right-3 flex gap-2">
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDelete(product.id);
                                     }}
-                                    className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-red-500 hover:bg-red-50 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                    className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm"
                                   >
                                     <Trash2 size={16} />
                                   </button>
                                 </div>
                               </div>
-                              <div className="p-6 flex-1 flex flex-col">
-                                <div className="flex items-start justify-between gap-4 mb-4">
-                                  <div>
-                                    <h3 className="font-display font-bold text-zinc-900 text-lg leading-tight">{product.data.itemName}</h3>
-                                    <p className="text-sm text-zinc-500 mt-1">{product.data.currency} {product.data.amount} • {product.data.views || 0} views</p>
-                                  </div>
-                                  <div className={`px-2 py-1 text-[10px] font-bold uppercase rounded-md border ${
+                              <div className="p-5 flex-1 flex flex-col">
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <h3 className="font-display font-bold text-zinc-900 text-lg leading-tight truncate">{product.data.itemName}</h3>
+                                  <div className={`px-2 py-1 text-[10px] font-bold uppercase rounded-lg border ${
                                     expired
-                                      ? 'bg-red-50 text-red-700 border-red-100'
+                                      ? 'bg-red-50 text-red-600 border-red-100'
                                       : currentStatus === 'active'
-                                      ? 'bg-brand-50 text-brand-700 border-brand-100'
-                                      : 'bg-amber-50 text-amber-700 border-amber-100'
+                                      ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                      : 'bg-zinc-100 text-zinc-600 border-zinc-200'
                                   }`}>
                                     {expired ? 'Expired' : currentStatus === 'active' ? 'Active' : 'Paused'}
                                   </div>
                                 </div>
-                                
-                                <div className="mt-auto space-y-3">
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleToggleStatus(product.id, currentStatus)}
-                                      className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${
-                                        currentStatus === 'active'
-                                          ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
-                                          : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                                      }`}
-                                    >
-                                      {currentStatus === 'active' ? 'Pause Link' : 'Activate Link'}
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    <button 
-                                      onClick={() => {
-                                        setCheckoutData(product.data);
-                                        setIsCheckoutOpen(true);
-                                      }}
-                                      className="py-2 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                    >
-                                      <PlayCircle size={14} /> Preview
-                                    </button>
-                                    <button 
-                                      onClick={() => {
-                                        const shareUrl = getShareUrl(product.id);
-                                        navigator.clipboard.writeText(shareUrl);
-                                        setCopiedField(`copy-${product.id}`);
-                                        setTimeout(() => setCopiedField(null), 2000);
-                                      }}
-                                      className="py-2 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                    >
-                                      {copiedField === `copy-${product.id}` ? (
-                                        <><Check size={14} className="text-emerald-500" /> Copied</>
-                                      ) : (
-                                        <><Copy size={14} /> Copy</>
-                                      )}
-                                    </button>
-                                    <button
-                                      onClick={() => handleShareNative(product.data, product.id)}
-                                      className="py-2 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
-                                    >
-                                      <Share2 size={14} />
-                                      Share
-                                    </button>
-                                  </div>
+                                <div className="mt-auto flex items-center justify-between pt-4 border-t border-zinc-100">
+                                  <p className="text-sm font-bold text-zinc-900">{product.data.currency} {product.data.amount}</p>
+                                  <p className="text-[11px] font-mono text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-md">{product.data.views || 0} views</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 mt-4">
+                                  <button 
+                                    onClick={() => handleToggleStatus(product.id, currentStatus)}
+                                    className={`py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                      currentStatus === 'active'
+                                        ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                        : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                    }`}
+                                  >
+                                    {currentStatus === 'active' ? 'Pause' : 'Activate'}
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      setCheckoutData(product.data);
+                                      setIsCheckoutOpen(true);
+                                    }}
+                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
+                                  >
+                                    Preview
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      const shareUrl = getShareUrl(product.id);
+                                      navigator.clipboard.writeText(shareUrl);
+                                      setCopiedField(`copy-${product.id}`);
+                                      setTimeout(() => setCopiedField(null), 2000);
+                                    }}
+                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
+                                  >
+                                    {copiedField === `copy-${product.id}` ? (
+                                      <><Check size={14} className="text-emerald-500" /> Copied</>
+                                    ) : (
+                                      <><Copy size={14} /> Copy</>
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={() => handleShareNative(product.data, product.id)}
+                                    className="py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
+                                  >
+                                    <Share2 size={14} />
+                                    Share
+                                  </button>
                                   <button 
                                     onClick={() => copyToClipboard(`<script src="${window.location.origin}/embed.js" async></script>\n<div data-nopaymentgateway-id="${product.id}"></div>`, product.id)}
-                                    className="w-full py-2 bg-zinc-50 hover:bg-zinc-100 border border-black/[0.03] rounded-xl text-[10px] font-bold text-zinc-500 flex items-center justify-center gap-2 transition-all"
+                                    className="col-span-2 py-2.5 rounded-xl border border-black/[0.05] text-xs font-bold hover:bg-black/[0.02] transition-all flex items-center justify-center gap-2"
                                   >
                                     {copiedField === product.id ? <Check size={12} className="text-brand-500" /> : <Copy size={12} />}
-                                    {copiedField === product.id ? 'Copied!' : 'Copy Embed Code'}
+                                    {copiedField === product.id ? 'Copied!' : 'Embed'}
                                   </button>
                                 </div>
                               </div>
