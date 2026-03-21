@@ -524,7 +524,7 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (theme === 'dark' && activeTab !== 'pay') {
+    if (theme === 'dark' && activeTab !== 'pay' && user) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -532,7 +532,7 @@ function MainApp() {
     if (activeTab !== 'pay') {
       localStorage.setItem('theme', theme);
     }
-  }, [theme, activeTab]);
+  }, [theme, activeTab, user]);
 
   // Test Embed State
   const [testProductId, setTestProductId] = useState<string>('');
@@ -1645,39 +1645,32 @@ function MainApp() {
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setCheckoutData(product.data);
-                                      setIsCheckoutOpen(true);
-                                    }}
-                                    className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-600 hover:text-indigo-600 hover:bg-indigo-50 hover:scale-110 transition-all shadow-sm"
-                                    title="Checkout Preview"
-                                  >
-                                    <Eye size={14} />
-                                  </button>
-                                  {!expired && (
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleStatus(product.id, currentStatus);
-                                      }}
-                                      className={`w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center hover:scale-110 transition-all shadow-sm ${
-                                        currentStatus === 'active'
-                                          ? 'text-zinc-600 hover:text-amber-600 hover:bg-amber-50'
-                                          : 'text-zinc-600 hover:text-emerald-600 hover:bg-emerald-50'
-                                      }`}
-                                      title={currentStatus === 'active' ? 'Pause Product' : 'Activate Product'}
-                                    >
-                                      {currentStatus === 'active' ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
-                                    </button>
-                                  )}
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
                                       handleDelete(product.id);
                                     }}
-                                    className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-600 hover:text-red-600 hover:bg-red-50 hover:scale-110 transition-all shadow-sm"
+                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-red-500/30 border border-white/20"
                                     title="Delete Product"
                                   >
                                     <Trash2 size={14} />
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id);
+                                    }}
+                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-indigo-500/30 border border-white/20"
+                                    title="Copy Embed Code"
+                                  >
+                                    {copiedField === product.id ? <Check size={14} /> : <Code size={14} />}
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(getShareUrl(product.id), `copy-${product.id}`);
+                                    }}
+                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-blue-500/30 border border-white/20"
+                                    title="Copy Link"
+                                  >
+                                    {copiedField === `copy-${product.id}` ? <Check size={14} /> : <Copy size={14} />}
                                   </button>
                                 </div>
                               </div>
@@ -1718,33 +1711,46 @@ function MainApp() {
 
                                   <div className="grid grid-cols-3 gap-1.5 mt-0.5">
                                     <button 
-                                      onClick={() => copyToClipboard(getShareUrl(product.id), `copy-${product.id}`)}
-                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCheckoutData(product.data);
+                                        setIsCheckoutOpen(true);
+                                      }}
+                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
                                     >
-                                      {copiedField === `copy-${product.id}` ? (
-                                        <Check size={14} className="text-emerald-500" />
-                                      ) : (
-                                        <Copy size={14} />
-                                      )}
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Link</span>
+                                      <Eye size={14} />
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Preview</span>
                                     </button>
+                                    {!expired ? (
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleStatus(product.id, currentStatus);
+                                        }}
+                                        className={`py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm ${
+                                          currentStatus === 'active'
+                                            ? 'text-zinc-600 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100'
+                                            : 'text-zinc-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100'
+                                        }`}
+                                      >
+                                        {currentStatus === 'active' ? <Pause size={14} /> : <Play size={14} />}
+                                        <span className="text-[9px] font-bold uppercase tracking-wider">{currentStatus === 'active' ? 'Pause' : 'Activate'}</span>
+                                      </button>
+                                    ) : (
+                                      <div className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-400 flex flex-col items-center justify-center gap-0.5 shadow-sm opacity-50 cursor-not-allowed">
+                                        <Pause size={14} />
+                                        <span className="text-[9px] font-bold uppercase tracking-wider">Expired</span>
+                                      </div>
+                                    )}
                                     <button
-                                      onClick={() => handleShareNative(product.data, product.id)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleShareNative(product.data, product.id);
+                                      }}
                                       className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
                                     >
                                       <Share2 size={14} />
                                       <span className="text-[9px] font-bold uppercase tracking-wider">Share</span>
-                                    </button>
-                                    <button 
-                                      onClick={() => copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id)}
-                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
-                                    >
-                                      {copiedField === product.id ? (
-                                        <Check size={14} className="text-emerald-500" />
-                                      ) : (
-                                        <Code size={14} />
-                                      )}
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Embed</span>
                                     </button>
                                   </div>
                                 </div>
