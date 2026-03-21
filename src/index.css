@@ -22,7 +22,7 @@
 
 @layer base {
   body {
-    @apply bg-paper text-ink antialiased selection:bg-brand-500/30;
+    @apply bg-paper text-ink antialiased selection:bg-brand-500/30 transition-colors duration-300;
   }
 }
 
@@ -30,8 +30,13 @@
   @apply bg-white/70 backdrop-blur-xl border border-white/20;
 }
 
+.dark .glass {
+  background-color: rgba(9, 9, 11, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
 .premium-card {
-  @apply bg-white border border-black/[0.03] shadow-[0_1px_3px_rgba(0,0,0,0.02),0_10px_20px_-5px_rgba(0,0,0,0.03)] rounded-[2rem];
+  @apply bg-white border border-black/[0.03] shadow-[0_1px_3px_rgba(0,0,0,0.02),0_10px_20px_-5px_rgba(0,0,0,0.03)] rounded-[2rem] transition-colors duration-300;
 }
 
 .premium-button {
@@ -42,6 +47,14 @@
   @apply bg-ink text-white hover:bg-zinc-800 shadow-lg shadow-black/10;
 }
 
+.dark .premium-button-primary {
+  background-color: #fafafa !important;
+  color: #09090b !important;
+}
+.dark .premium-button-primary:hover {
+  background-color: #e4e4e7 !important;
+}
+
 .premium-button-secondary {
   @apply bg-white text-ink border border-black/5 hover:bg-zinc-50;
 }
@@ -49,3 +62,98 @@
 .premium-button-brand {
   @apply bg-brand-500 text-white hover:bg-brand-600 shadow-lg shadow-brand-500/20;
 }
+
+/* Dark Mode Overrides */
+.dark {
+  --color-ink: #fafafa;
+  --color-paper: #09090b;
+}
+
+.dark body {
+  @apply bg-zinc-950 text-zinc-50;
+}
+
+.dark .bg-black.text-white {
+  background-color: #fafafa !important;
+  color: #09090b !important;
+}
+.dark .bg-black.text-white:hover {
+  background-color: #e4e4e7 !important;
+}
+
+.dark .bg-white { background-color: #18181b !important; }
+.dark .bg-zinc-50 { background-color: #27272a !important; }
+.dark .bg-zinc-50\/50 { background-color: rgba(39, 39, 42, 0.5) !important; }
+.dark .bg-zinc-50\/30 { background-color: rgba(39, 39, 42, 0.3) !important; }
+.dark .bg-zinc-100 { background-color: #3f3f46 !important; }
+.dark .bg-zinc-200 { background-color: #52525b !important; }
+.dark .bg-zinc-900 { background-color: #3f3f46 !important; }
+
+.dark .text-zinc-900 { color: #fafafa !important; }
+.dark .text-zinc-800 { color: #f4f4f5 !important; }
+.dark .text-zinc-700 { color: #e4e4e7 !important; }
+.dark .text-zinc-600 { color: #d4d4d8 !important; }
+.dark .text-zinc-500 { color: #a1a1aa !important; }
+.dark .text-zinc-400 { color: #71717a !important; }
+
+.dark .border-black\/\[0\.03\] { border-color: rgba(255,255,255,0.05) !important; }
+.dark .border-black\/\[0\.05\] { border-color: rgba(255,255,255,0.1) !important; }
+.dark .border-zinc-100 { border-color: #3f3f46 !important; }
+.dark .border-zinc-200 { border-color: #52525b !important; }
+.dark .border-zinc-300 { border-color: #71717a !important; }
+.dark .hover\:border-zinc-300:hover { border-color: #71717a !important; }
+.dark .border-t-zinc-800 { border-top-color: #fafafa !important; }
+
+.dark .hover\:bg-zinc-50:hover { background-color: #27272a !important; }
+.dark .hover\:bg-zinc-100:hover { background-color: #3f3f46 !important; }
+.dark .hover\:text-zinc-900:hover { color: #fafafa !important; }
+
+.dark .bg-brand-50 { background-color: rgba(34, 197, 94, 0.1) !important; }
+.dark .bg-brand-50\/30 { background-color: rgba(34, 197, 94, 0.05) !important; }
+.dark .border-brand-100 { border-color: rgba(34, 197, 94, 0.2) !important; }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.1) !important; }
+.dark .border-emerald-100 { border-color: rgba(16, 185, 129, 0.2) !important; }
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.1) !important; }
+.dark .border-blue-100 { border-color: rgba(59, 130, 246, 0.2) !important; }
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.1) !important; }
+.dark .border-amber-100 { border-color: rgba(245, 158, 11, 0.2) !important; }
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.1) !important; }
+.dark .border-red-100 { border-color: rgba(239, 68, 68, 0.2) !important; }
+.dark .bg-teal-50 { background-color: rgba(20, 184, 166, 0.1) !important; }
+.dark .border-teal-100 { border-color: rgba(20, 184, 166, 0.2) !important; }
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.1) !important; }
+.dark .border-orange-100 { border-color: rgba(249, 115, 22, 0.2) !important; }
+.dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.1) !important; }
+.dark .border-violet-100 { border-color: rgba(139, 92, 246, 0.2) !important; }
+.dark .bg-pink-50 { background-color: rgba(236, 72, 153, 0.1) !important; }
+.dark .border-pink-100 { border-color: rgba(236, 72, 153, 0.2) !important; }
+
+.dark .bg-black\/5 { background-color: rgba(255, 255, 255, 0.05) !important; }
+.dark .bg-black\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
+.dark .hover\:bg-black\/5:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
+.dark .hover\:bg-black\/10:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
+.dark .border-black\/10 { border-color: rgba(255, 255, 255, 0.1) !important; }
+
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+.dark .text-emerald-900 { color: #6ee7b7 !important; }
+.dark .text-emerald-700 { color: #34d399 !important; }
+.dark .text-emerald-600 { color: #10b981 !important; }
+.dark .text-amber-700 { color: #fbbf24 !important; }
+.dark .text-brand-700 { color: #4ade80 !important; }
+.dark .text-brand-600 { color: #4ade80 !important; }
+.dark .text-red-600 { color: #f87171 !important; }
+.dark .text-blue-600 { color: #60a5fa !important; }
+.dark .text-orange-600 { color: #fb923c !important; }
+.dark .text-violet-600 { color: #a78bfa !important; }
+.dark .text-pink-600 { color: #f472b6 !important; }
+
+.dark .hover\:text-emerald-600:hover { color: #10b981 !important; }
+.dark .hover\:text-red-600:hover { color: #f87171 !important; }
+.dark .hover\:text-blue-600:hover { color: #60a5fa !important; }
+.dark .hover\:text-violet-600:hover { color: #a78bfa !important; }
+.dark .hover\:text-pink-600:hover { color: #f472b6 !important; }
+.dark .hover\:text-brand-600:hover { color: #4ade80 !important; }
+

@@ -37,12 +37,64 @@ import {
   FileText,
   ExternalLink,
   Bitcoin,
-  Download
+  Download,
+  Sun,
+  Moon,
+  Eye,
+  Pause
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, loginWithGoogle, logout } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot, increment, updateDoc } from 'firebase/firestore';
+import Cropper from 'react-easy-crop';
+
+const createImage = (url: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', (error) => reject(error));
+    image.setAttribute('crossOrigin', 'anonymous');
+    image.src = url;
+  });
+
+async function getCroppedImg(
+  imageSrc: string,
+  pixelCrop: any,
+): Promise<string> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    return '';
+  }
+
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    pixelCrop.width,
+    pixelCrop.height
+  );
+
+  let quality = 0.9;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  
+  while (dataUrl.length > 680000 && quality > 0.1) {
+    quality -= 0.1;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  }
+
+  return dataUrl;
+}
 
 enum OperationType {
   CREATE = 'create',
@@ -134,6 +186,7 @@ interface PaymentPayload {
   amount: number;
   currency: string;
   coverImage: string;
+  imageFit?: 'cover' | 'contain';
   methods: {
     upi?: string;
     bank?: { account: string; ifsc: string };
@@ -442,6 +495,11 @@ function MainApp() {
   const [autoExpire24h, setAutoExpire24h] = useState(false);
   
   const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [imageFit, setImageFit] = useState<'cover' | 'contain'>('cover');
   const [resultProductId, setResultProductId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -452,6 +510,25 @@ function MainApp() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Test Embed State
   const [testProductId, setTestProductId] = useState<string>('');
@@ -546,17 +623,29 @@ function MainApp() {
         setError('Please upload a valid image file.');
         return;
       }
-      if (file.size > 500 * 1024) {
-        setError('Image is too large. Please upload an image smaller than 500KB.');
-        return;
-      }
       const reader = new FileReader();
       reader.onload = (event) => {
-        setCoverImage(event.target?.result as string);
-        setResultProductId(null);
-        setError(null);
+        setCropImageSrc(event.target?.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const onCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  };
+
+  const handleSaveCrop = async () => {
+    if (!cropImageSrc || !croppedAreaPixels) return;
+    try {
+      const croppedImage = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      setCoverImage(croppedImage);
+      setCropImageSrc(null);
+      setResultProductId(null);
+      setError(null);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to crop image');
     }
   };
 
@@ -597,6 +686,7 @@ function MainApp() {
         amount: parseFloat(amount),
         currency,
         coverImage,
+        imageFit,
         methods: {},
         createdAt: serverTimestamp(),
         status: 'active',
@@ -692,10 +782,38 @@ function MainApp() {
     }
   };
 
-  const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
+  const copyToClipboard = async (text: string, field: string) => {
+    const fallbackCopy = () => {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopiedField(field);
+        setTimeout(() => setCopiedField(null), 2000);
+      } catch (err) {
+        console.error('Fallback copy failed', err);
+      }
+      document.body.removeChild(textArea);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopiedField(field);
+        setTimeout(() => setCopiedField(null), 2000);
+      } catch (err) {
+        fallbackCopy();
+      }
+    } else {
+      fallbackCopy();
+    }
   };
 
   const getStripeCheckoutUrl = (product: any) => {
@@ -721,9 +839,7 @@ function MainApp() {
         return;
       } catch {}
     }
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedField(`share-${productId}`);
-    setTimeout(() => setCopiedField(null), 2000);
+    copyToClipboard(shareUrl, `share-${productId}`);
   };
 
   const handleGoogleAuth = async () => {
@@ -1242,11 +1358,11 @@ function MainApp() {
                     </div>
 
                     {hostedProduct.coverImage && (
-                      <div className="aspect-[16/9] md:aspect-[21/9] w-full max-w-md md:max-w-none mx-auto rounded-2xl md:rounded-[2rem] overflow-hidden mb-8 shadow-xl shadow-black/5">
+                      <div className="aspect-[16/9] md:aspect-[21/9] w-full max-w-md md:max-w-none mx-auto rounded-2xl md:rounded-[2rem] overflow-hidden mb-8 shadow-xl shadow-black/5 bg-zinc-50">
                         <img 
                           src={hostedProduct.coverImage} 
                           alt={hostedProduct.itemName}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full ${hostedProduct.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
                           referrerPolicy="no-referrer"
                         />
                       </div>
@@ -1312,11 +1428,7 @@ function MainApp() {
                           <div className="bg-zinc-50 p-4 rounded-2xl border border-black/[0.02] flex items-center justify-between">
                             <code className="text-xs font-bold text-zinc-600">{hostedProduct.methods.upi}</code>
                             <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(hostedProduct.methods.upi || '');
-                                setCopiedField('upi');
-                                setTimeout(() => setCopiedField(null), 2000);
-                              }}
+                              onClick={() => copyToClipboard(hostedProduct.methods.upi || '', 'upi')}
                               className="p-2 hover:bg-white rounded-lg transition-colors text-zinc-400 hover:text-emerald-500"
                             >
                               {copiedField === 'upi' ? <Check size={16} /> : <Copy size={16} />}
@@ -1375,11 +1487,7 @@ function MainApp() {
                           <div className="bg-zinc-50 p-4 rounded-2xl border border-black/[0.02] flex items-center justify-between">
                             <code className="text-[10px] font-bold text-zinc-600 break-all">{hostedProduct.methods.crypto.address}</code>
                             <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(hostedProduct.methods.crypto?.address || '');
-                                setCopiedField('crypto');
-                                setTimeout(() => setCopiedField(null), 2000);
-                              }}
+                              onClick={() => copyToClipboard(hostedProduct.methods.crypto?.address || '', 'crypto')}
                               className="p-2 hover:bg-white rounded-lg transition-colors text-zinc-400 hover:text-orange-500"
                             >
                               {copiedField === 'crypto' ? <Check size={16} /> : <Copy size={16} />}
@@ -1521,17 +1629,45 @@ function MainApp() {
                                 <img 
                                   src={product.data.coverImage} 
                                   alt={product.data.itemName} 
-                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                                  className={`w-full h-full transition-transform duration-700 group-hover:scale-105 ${product.data.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`} 
                                   referrerPolicy="no-referrer"
                                 />
                                 <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <div className="absolute top-2 right-2 flex gap-2">
+                                <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 translate-y-0 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 md:translate-y-[-10px] md:group-hover:translate-y-0">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCheckoutData(product.data);
+                                      setIsCheckoutOpen(true);
+                                    }}
+                                    className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-600 hover:text-indigo-600 hover:bg-indigo-50 hover:scale-110 transition-all shadow-sm"
+                                    title="Checkout Preview"
+                                  >
+                                    <Eye size={14} />
+                                  </button>
+                                  {!expired && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleStatus(product.id, currentStatus);
+                                      }}
+                                      className={`w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center hover:scale-110 transition-all shadow-sm ${
+                                        currentStatus === 'active'
+                                          ? 'text-zinc-600 hover:text-amber-600 hover:bg-amber-50'
+                                          : 'text-zinc-600 hover:text-emerald-600 hover:bg-emerald-50'
+                                      }`}
+                                      title={currentStatus === 'active' ? 'Pause Product' : 'Activate Product'}
+                                    >
+                                      {currentStatus === 'active' ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+                                    </button>
+                                  )}
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDelete(product.id);
                                     }}
-                                    className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm"
+                                    className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm border border-black/5 flex items-center justify-center text-zinc-600 hover:text-red-600 hover:bg-red-50 hover:scale-110 transition-all shadow-sm"
+                                    title="Delete Product"
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -1555,18 +1691,8 @@ function MainApp() {
                                   <p className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded">{product.data.views || 0} views</p>
                                 </div>
                                 <div className="flex flex-col gap-1.5 mt-3">
-                                  <button 
-                                    onClick={() => {
-                                      setCheckoutData(product.data);
-                                      setIsCheckoutOpen(true);
-                                    }}
-                                    className="w-full py-2 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-indigo-600 hover:shadow-md hover:shadow-indigo-500/20 transition-all duration-300 flex items-center justify-center gap-2"
-                                  >
-                                    Checkout Preview
-                                  </button>
-
-                                  {expired ? (
-                                    <div className="grid grid-cols-2 gap-1.5">
+                                  {expired && (
+                                    <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                                       <button 
                                         onClick={() => handleEnableForever(product.id)}
                                         className="py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5"
@@ -1580,28 +1706,12 @@ function MainApp() {
                                         Extend 24 hrs
                                       </button>
                                     </div>
-                                  ) : (
-                                    <button 
-                                      onClick={() => handleToggleStatus(product.id, currentStatus)}
-                                      className={`w-full py-2 rounded-lg border text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
-                                        currentStatus === 'active'
-                                          ? 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                                          : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                                      }`}
-                                    >
-                                      {currentStatus === 'active' ? 'Pause Product' : 'Activate Product'}
-                                    </button>
                                   )}
 
                                   <div className="grid grid-cols-3 gap-1.5 mt-0.5">
                                     <button 
-                                      onClick={() => {
-                                        const shareUrl = getShareUrl(product.id);
-                                        navigator.clipboard.writeText(shareUrl);
-                                        setCopiedField(`copy-${product.id}`);
-                                        setTimeout(() => setCopiedField(null), 2000);
-                                      }}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
+                                      onClick={() => copyToClipboard(getShareUrl(product.id), `copy-${product.id}`)}
+                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
                                     >
                                       {copiedField === `copy-${product.id}` ? (
                                         <Check size={14} className="text-emerald-500" />
@@ -1612,14 +1722,14 @@ function MainApp() {
                                     </button>
                                     <button
                                       onClick={() => handleShareNative(product.data, product.id)}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
+                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
                                     >
                                       <Share2 size={14} />
                                       <span className="text-[9px] font-bold uppercase tracking-wider">Share</span>
                                     </button>
                                     <button 
                                       onClick={() => copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id)}
-                                      className="py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-200 transition-all duration-300 flex flex-col items-center justify-center gap-0.5"
+                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
                                     >
                                       {copiedField === product.id ? (
                                         <Check size={14} className="text-emerald-500" />
@@ -1661,36 +1771,57 @@ function MainApp() {
                         <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
                         Product Image
                       </h3>
-                      <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`relative aspect-[21/9] max-h-32 md:max-h-none rounded-2xl md:rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 ${coverImage ? 'border-brand-500 bg-brand-50/30' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-300'}`}
-                      >
-                        <input 
-                          type="file" 
-                          ref={fileInputRef} 
-                          onChange={handleImageUpload} 
-                          className="hidden" 
-                          accept="image/*"
-                        />
-                        {coverImage ? (
-                          <>
-                            <img src={coverImage} alt="Cover" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <div className="px-4 py-2 bg-white rounded-xl text-xs font-bold text-zinc-900 flex items-center gap-2">
-                                <Upload size={14} /> Change Image
+                      <div className="space-y-4">
+                        <div 
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`relative aspect-[21/9] max-h-32 md:max-h-none rounded-2xl md:rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center gap-4 ${coverImage ? 'border-brand-500 bg-brand-50/30' : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100 hover:border-zinc-300'}`}
+                        >
+                          <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            onChange={handleImageUpload} 
+                            className="hidden" 
+                            accept="image/*"
+                          />
+                          {coverImage ? (
+                            <>
+                              <img src={coverImage} alt="Cover" className={`w-full h-full ${imageFit === 'contain' ? 'object-contain' : 'object-cover'}`} referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <div className="px-4 py-2 bg-white rounded-xl text-xs font-bold text-zinc-900 flex items-center gap-2">
+                                  <Upload size={14} /> Change Image
+                                </div>
                               </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm border border-black/[0.03] flex items-center justify-center text-zinc-400">
+                                <Upload size={24} />
+                              </div>
+                              <div className="text-center">
+                                <p className="text-sm font-bold text-zinc-900">Click to upload product image</p>
+                                <p className="text-xs text-zinc-500 mt-1">PNG, JPG will be compressed</p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {coverImage && (
+                          <div className="flex items-center justify-between bg-zinc-50 p-3 rounded-xl border border-black/[0.03]">
+                            <span className="text-xs font-bold text-zinc-600 ml-1">Image Fit</span>
+                            <div className="flex bg-white rounded-lg p-1 border border-black/[0.03] shadow-sm">
+                              <button
+                                onClick={() => setImageFit('cover')}
+                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${imageFit === 'cover' ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+                              >
+                                Cover
+                              </button>
+                              <button
+                                onClick={() => setImageFit('contain')}
+                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${imageFit === 'contain' ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+                              >
+                                Contain
+                              </button>
                             </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-14 h-14 bg-white rounded-2xl shadow-sm border border-black/[0.03] flex items-center justify-center text-zinc-400">
-                              <Upload size={24} />
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm font-bold text-zinc-900">Click to upload product image</p>
-                              <p className="text-xs text-zinc-500 mt-1">PNG, JPG up to 500KB</p>
-                            </div>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1989,7 +2120,7 @@ function MainApp() {
                               <img 
                                 src={product.data.coverImage} 
                                 alt={product.data.itemName} 
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                className={`w-full h-full transition-transform duration-500 group-hover:scale-110 ${product.data.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`} 
                                 referrerPolicy="no-referrer"
                               />
                               <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -2165,6 +2296,35 @@ function MainApp() {
                           {user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleString() : 'Unavailable'}
                         </p>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-10 pt-10 border-t border-zinc-100">
+                  <h3 className="text-lg font-bold text-zinc-900 mb-6">Appearance</h3>
+                  <div className="flex items-center justify-between p-6 bg-zinc-50 rounded-3xl border border-black/[0.03]">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                        {theme === 'dark' ? <Moon size={20} className="text-zinc-600" /> : <Sun size={20} className="text-amber-500" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-zinc-900">Theme Preference</p>
+                        <p className="text-xs text-zinc-500 font-medium">Toggle between light and dark mode.</p>
+                      </div>
+                    </div>
+                    <div className="flex bg-white rounded-xl p-1 border border-black/[0.03] shadow-sm">
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${theme === 'light' ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+                      >
+                        <Sun size={14} /> Light
+                      </button>
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${theme === 'dark' ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900'}`}
+                      >
+                        <Moon size={14} /> Dark
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2495,6 +2655,64 @@ function MainApp() {
                 <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2">
                   <ShieldCheck size={14} className="text-brand-500" /> Secure Encryption by slaypay.xyz
                 </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* CROPPER MODAL */}
+      <AnimatePresence>
+        {cropImageSrc && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-900/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-2xl relative z-[201] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-zinc-900">Adjust Image</h3>
+                <button onClick={() => setCropImageSrc(null)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="relative w-full h-[50vh] sm:h-[60vh] bg-zinc-900">
+                <Cropper
+                  image={cropImageSrc}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={21 / 9}
+                  onCropChange={setCrop}
+                  onCropComplete={onCropComplete}
+                  onZoomChange={setZoom}
+                />
+              </div>
+              <div className="p-6 flex flex-col sm:flex-row justify-between items-center bg-zinc-50 gap-4">
+                <div className="w-full sm:flex-1 sm:mr-6 flex items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-500">Zoom</span>
+                  <input
+                    type="range"
+                    value={zoom}
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    aria-labelledby="Zoom"
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="w-full h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-black"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveCrop}
+                  className="w-full sm:w-auto px-8 py-3 bg-black text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors"
+                >
+                  Save Image
+                </button>
               </div>
             </motion.div>
           </div>
