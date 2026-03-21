@@ -524,13 +524,15 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (theme === 'dark') {
+    if (theme === 'dark' && activeTab !== 'pay') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    if (activeTab !== 'pay') {
+      localStorage.setItem('theme', theme);
+    }
+  }, [theme, activeTab]);
 
   // Test Embed State
   const [testProductId, setTestProductId] = useState<string>('');

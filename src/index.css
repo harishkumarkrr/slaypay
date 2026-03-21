@@ -39,6 +39,11 @@
   @apply bg-white border border-black/[0.03] shadow-[0_1px_3px_rgba(0,0,0,0.02),0_10px_20px_-5px_rgba(0,0,0,0.03)] rounded-[2rem] transition-colors duration-300;
 }
 
+.dark .premium-card {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
 .premium-button {
   @apply px-6 py-3 rounded-full font-semibold transition-all duration-300 active:scale-95;
 }
@@ -57,6 +62,15 @@
 
 .premium-button-secondary {
   @apply bg-white text-ink border border-black/5 hover:bg-zinc-50;
+}
+
+.dark .premium-button-secondary {
+  background-color: #18181b !important;
+  color: #fafafa !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .premium-button-secondary:hover {
+  background-color: #27272a !important;
 }
 
 .premium-button-brand {

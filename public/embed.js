@@ -251,7 +251,7 @@
       container.innerHTML = `
         <img src="${data.coverImage}" alt="Buy ${data.itemName || 'Product'}" />
         <div class="nopaymentgateway-overlay">
-          <div class="nopaymentgateway-badge">Click to Buy</div>
+          <div class="nopaymentgateway-badge">Click to Pay</div>
         </div>
       `;
 
