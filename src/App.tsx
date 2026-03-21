@@ -524,7 +524,12 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (theme === 'dark' && activeTab !== 'pay' && user) {
+    if (!user) {
+      document.documentElement.classList.remove('dark');
+      return;
+    }
+
+    if (theme === 'dark' && activeTab !== 'pay') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
