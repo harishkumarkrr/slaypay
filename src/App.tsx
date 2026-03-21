@@ -183,6 +183,7 @@ interface PaymentPayload {
   merchantId: string;
   merchantName: string;
   itemName: string;
+  description?: string;
   amount: number;
   currency: string;
   coverImage: string;
@@ -482,6 +483,7 @@ function MainApp() {
   // Form State
   const [merchantName, setMerchantName] = useState('');
   const [itemName, setItemName] = useState('');
+  const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('120');
   const [currency, setCurrency] = useState('INR');
   
@@ -683,6 +685,7 @@ function MainApp() {
         merchantId: user.uid,
         merchantName: merchantName,
         itemName: itemName,
+        description: description,
         amount: parseFloat(amount),
         currency,
         coverImage,
@@ -706,6 +709,7 @@ function MainApp() {
       
       // Reset form
       setItemName('');
+      setDescription('');
       setAmount('120');
       setCurrency('INR');
       setCoverImage(null);
@@ -1371,9 +1375,11 @@ function MainApp() {
                     <h1 className="text-4xl font-black text-zinc-900 mb-4 tracking-tight leading-tight">
                       {hostedProduct.itemName}
                     </h1>
-                    <p className="text-zinc-500 text-lg mb-8 leading-relaxed">
-                      Payment instructions are delivered over secure HTTPS, and payment is completed in your selected external app.
-                    </p>
+                    {hostedProduct.description && (
+                      <p className="text-zinc-500 text-lg mb-8 leading-relaxed whitespace-pre-wrap">
+                        {hostedProduct.description}
+                      </p>
+                    )}
 
                     <div className="flex items-center gap-4 p-6 bg-zinc-50 rounded-[2rem] border border-black/[0.02]">
                       <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-black/[0.03]">
@@ -1851,6 +1857,16 @@ function MainApp() {
                             onChange={(e) => setItemName(e.target.value)}
                             placeholder="e.g. Premium SaaS Subscription"
                             className="w-full px-5 py-4 bg-zinc-50 border border-black/[0.03] rounded-2xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all font-medium"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-zinc-500 ml-1">Description (Optional)</label>
+                          <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="Add some details about your product..."
+                            rows={3}
+                            className="w-full px-5 py-4 bg-zinc-50 border border-black/[0.03] rounded-2xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all font-medium resize-none"
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -2517,6 +2533,11 @@ function MainApp() {
                     </p>
                   </div>
                 </div>
+                {checkoutData.description && (
+                  <div className="mt-4 pt-4 border-t border-zinc-50">
+                    <p className="text-zinc-500 text-sm leading-relaxed whitespace-pre-wrap">{checkoutData.description}</p>
+                  </div>
+                )}
               </div>
 
               {/* Payment Methods */}
