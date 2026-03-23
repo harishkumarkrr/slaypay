@@ -48,6 +48,21 @@
           "type": "string",
           "description": "Base64 encoded image or URL."
         },
+        "imageFit": {
+          "type": "string",
+          "enum": ["cover", "contain"]
+        },
+        "description": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "expired"]
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
         "methods": {
           "type": "object",
           "properties": {
@@ -71,6 +86,23 @@
         "createdAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "isVerified": {
+          "type": "boolean",
+          "description": "Whether the product is verified."
+        },
+        "verificationRequested": {
+          "type": "boolean",
+          "description": "Whether the merchant has requested verification."
+        },
+        "verificationExpiry": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date when verification expires."
+        },
+        "verificationReference": {
+          "type": "string",
+          "description": "A unique reference code for payment verification."
         }
       },
       "required": ["merchantId", "merchantName", "itemName", "amount", "currency", "coverImage", "createdAt"]

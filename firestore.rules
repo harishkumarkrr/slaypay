@@ -36,6 +36,13 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid == "WEjQ3Q3j6QWKJonNDXi1I0wwFen2" || 
+        ("email" in request.auth.token && request.auth.token.email == "harishkumarkrr.t@gmail.com")
+      );
+    }
     
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
@@ -72,6 +79,10 @@ service cloud.firestore {
       return request.resource.data[field] is number && request.resource.data[field] > 0;
     }
 
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
@@ -85,16 +96,32 @@ service cloud.firestore {
     }
     
     function isValidProduct() {
-      return hasRequiredFields(['merchantId', 'merchantName', 'itemName', 'amount', 'currency', 'coverImage', 'createdAt']) &&
-             request.resource.data.merchantId == request.auth.uid &&
-             validStringLength('merchantName', 1, 100) &&
+      let requiredFields = ['merchantId', 'merchantName', 'itemName', 'amount', 'currency', 'coverImage', 'createdAt', 'status', 'isVerified', 'verificationRequested', 'verificationExpiry', 'methods', 'description', 'imageFit', 'expiresAt'];
+      let optionalFields = ['verificationReference', 'views', 'productId', 'isPaymentSubmitted'];
+      let allFields = requiredFields.concat(optionalFields);
+
+      return hasRequiredFields(requiredFields) &&
+             hasOnlyAllowedFields(allFields) &&
+             (request.resource.data.merchantId == request.auth.uid || isAdmin()) &&
+             request.resource.data.merchantName is string &&
              validStringLength('itemName', 1, 200) &&
              isPositive('amount') &&
              validStringLength('currency', 3, 3) &&
              request.resource.data.coverImage is string &&
              request.resource.data.coverImage.size() < 1048576 && // Max 1MB for base64
              request.resource.data.createdAt is timestamp &&
-             (!('methods' in request.resource.data) || request.resource.data.methods is map);
+             request.resource.data.status in ['active', 'paused', 'expired'] &&
+             request.resource.data.isVerified is bool &&
+             request.resource.data.verificationRequested is bool &&
+             (request.resource.data.verificationExpiry == null || request.resource.data.verificationExpiry is timestamp) &&
+             request.resource.data.methods is map &&
+             (request.resource.data.description is string) &&
+             (request.resource.data.imageFit in ['cover', 'contain']) &&
+             (request.resource.data.expiresAt == null || request.resource.data.expiresAt is timestamp || request.resource.data.expiresAt is number) &&
+             (!('verificationReference' in request.resource.data) || request.resource.data.verificationReference == null || request.resource.data.verificationReference is string) &&
+             (!('views' in request.resource.data) || request.resource.data.views is number) &&
+             (!('productId' in request.resource.data) || request.resource.data.productId is string) &&
+             (!('isPaymentSubmitted' in request.resource.data) || request.resource.data.isPaymentSubmitted is bool);
     }
 
     // ===============================================================
@@ -102,11 +129,11 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser() && uidUnchanged();
-      allow update: if isOwner(userId) && isValidUser() && uidNotModified() && 
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser() && uidNotModified() && 
                     request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     match /products/{productId} {
@@ -114,10 +141,15 @@ service cloud.firestore {
       allow read: if true;
       
       allow create: if isAuthenticated() && isValidProduct();
-      allow update: if isDocOwner() && isValidProduct() && 
+      allow update: if (isDocOwner() || isAdmin()) && isValidProduct() && 
                     request.resource.data.merchantId == resource.data.merchantId &&
                     request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isDocOwner();
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /appSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

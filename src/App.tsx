@@ -1,5 +1,8 @@
-import React, { useState, useRef, useEffect, Component } from 'react';
+import React, { useState, useRef, useEffect, Component, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
+
+export const PaymentSettingsContext = createContext<any>(null);
+
 import { 
   CreditCard, 
   Code, 
@@ -41,13 +44,23 @@ import {
   Sun,
   Moon,
   Eye,
-  Pause
+  Pause,
+  MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, loginWithGoogle, logout } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot, increment, updateDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot, increment, updateDoc, Timestamp } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
+
+const VerifiedBadge = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <div className={`inline-flex items-center justify-center ${className}`}>
+    <svg viewBox="0 0 24 24" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L14.81 3.51L17.76 2.51L19.27 5.32L22.22 6.32L21.22 9.27L22.73 12.08L21.22 14.89L22.22 17.84L19.27 18.84L17.76 21.65L14.81 20.65L12 22.16L9.19 20.65L6.24 21.65L4.73 18.84L1.78 17.84L2.78 14.89L1.27 12.08L2.78 9.27L1.78 6.32L4.73 5.32L6.24 2.51L9.19 3.51L12 2Z" fill="#10B981" />
+      <path d="M9 12L11 14L15 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  </div>
+);
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
@@ -124,7 +137,7 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, shouldThrow: boolean = true) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -143,8 +156,13 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  
+  if (shouldThrow) {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
+  } else {
+    console.warn('Firestore Warning (Ignored): ', errInfo.error, 'at', path);
+  }
 }
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
@@ -153,6 +171,24 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
+
+  componentDidMount() {
+    window.addEventListener('error', this.handleGlobalError);
+    window.addEventListener('unhandledrejection', this.handleGlobalRejection);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('error', this.handleGlobalError);
+    window.removeEventListener('unhandledrejection', this.handleGlobalRejection);
+  }
+
+  handleGlobalError = (event: ErrorEvent) => {
+    this.setState({ hasError: true, error: event.error });
+  };
+
+  handleGlobalRejection = (event: PromiseRejectionEvent) => {
+    this.setState({ hasError: true, error: event.reason instanceof Error ? event.reason : new Error(String(event.reason)) });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -175,6 +211,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
         </div>
       );
     }
+
     return this.props.children;
   }
 }
@@ -197,8 +234,14 @@ interface PaymentPayload {
   };
   createdAt?: any;
   status?: 'active' | 'paused';
-  expiresAt?: number | null;
+  expiresAt?: any;
   views?: number;
+  isVerified?: boolean;
+  verificationRequested?: boolean;
+  isPaymentSubmitted?: boolean;
+  verificationExpiry?: any;
+  productId?: string;
+  verificationReference?: string;
 }
 
 const isHttpUrl = (value: string) => /^https?:\/\/\S+$/i.test(value.trim());
@@ -376,6 +419,7 @@ const BrandLogo = ({ className = "h-20 w-auto" }: { className?: string }) => (
 );
 
 function MainApp() {
+  const paymentSettings = useContext(PaymentSettingsContext);
   const navigate = useNavigate();
   const location = useLocation();
   const { productId: hostedProductId } = useParams();
@@ -392,6 +436,8 @@ function MainApp() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -495,6 +541,7 @@ function MainApp() {
   const [stripePriceId, setStripePriceId] = useState('');
   const [paypalClientId, setPaypalClientId] = useState('');
   const [autoExpire24h, setAutoExpire24h] = useState(false);
+  const [verificationRequested, setVerificationRequested] = useState<boolean>(false);
   
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
@@ -658,6 +705,29 @@ function MainApp() {
     }
   };
 
+  useEffect(() => {
+    if (products.length > 0 && !upiId && !bankAcc && !cryptoAddress && !stripeKey && !paypalClientId) {
+      const latestProduct = products[0].data;
+      if (latestProduct.methods) {
+        if (latestProduct.methods.upi) setUpiId(latestProduct.methods.upi);
+        if (latestProduct.methods.bank) {
+          setBankAcc(latestProduct.methods.bank.account || '');
+          setBankIfsc(latestProduct.methods.bank.ifsc || '');
+        }
+        if (latestProduct.methods.crypto) {
+          setCryptoAddress(latestProduct.methods.crypto.address || '');
+        }
+        if (latestProduct.methods.stripe) {
+          setStripeKey(latestProduct.methods.stripe.key || '');
+          setStripePriceId(latestProduct.methods.stripe.priceId || '');
+        }
+        if (latestProduct.methods.paypal) {
+          setPaypalClientId(latestProduct.methods.paypal.clientId || '');
+        }
+      }
+    }
+  }, [products]);
+
   const handleCreateProduct = async () => {
     if (!user) {
       setError('Please sign in to create a product.');
@@ -700,8 +770,18 @@ function MainApp() {
         methods: {},
         createdAt: serverTimestamp(),
         status: 'active',
-        expiresAt: autoExpire24h ? Date.now() + (24 * 60 * 60 * 1000) : null
+        expiresAt: autoExpire24h ? Timestamp.fromMillis(Date.now() + (24 * 60 * 60 * 1000)) : null,
+        isVerified: false,
+        verificationRequested: verificationRequested,
+        isPaymentSubmitted: false,
+        verificationExpiry: null
       };
+
+      if (verificationRequested) {
+        const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+        const randomHash = Math.random().toString(36).substring(2, 6).toUpperCase();
+        payload.verificationReference = `VER-${timestamp}-${randomHash}`;
+      }
 
       if (upiId) payload.methods.upi = upiId;
       if (bankAcc) payload.methods.bank = { account: bankAcc, ifsc: bankIfsc };
@@ -710,9 +790,23 @@ function MainApp() {
       if (paypalClientId) payload.methods.paypal = { clientId: paypalClientId };
 
       const newDocRef = doc(collection(db, 'products'));
-      await setDoc(newDocRef, payload);
+      try {
+        await setDoc(newDocRef, payload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, 'products');
+      }
 
       setResultProductId(newDocRef.id);
+      
+      // Success feedback
+      setNotification({ message: 'Product created successfully!', type: 'success' });
+
+      if (verificationRequested) {
+        // Trigger verification modal for the new product
+        handleRequestVerification(newDocRef.id, payload);
+      } else {
+        navigate('/dashboard');
+      }
       
       // Reset form
       setItemName('');
@@ -721,11 +815,7 @@ function MainApp() {
       setCurrency('INR');
       setCoverImage(null);
       setAutoExpire24h(false);
-      
-      // Success feedback
-      setNotification({ message: 'Product created successfully! You can now find it in your dashboard.', type: 'success' });
-      navigate('/dashboard');
-      
+      setVerificationRequested(false);
     } catch (err: any) {
       handleFirestoreError(err, OperationType.CREATE, 'products');
     } finally {
@@ -734,12 +824,18 @@ function MainApp() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
+    setProductToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (productToDelete) {
       try {
-        await deleteDoc(doc(db, 'products', id));
-        if (resultProductId === id) setResultProductId(null);
+        await deleteDoc(doc(db, 'products', productToDelete));
+        if (resultProductId === productToDelete) setResultProductId(null);
+        setProductToDelete(null);
+        setNotification({ message: 'Product deleted successfully.', type: 'success' });
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
+        handleFirestoreError(err, OperationType.DELETE, `products/${productToDelete}`);
       }
     }
   };
@@ -777,6 +873,48 @@ function MainApp() {
     }
   };
 
+  const handleRequestVerification = async (id: string, product: any) => {
+    const data = product.data || product;
+    let reference = data.verificationReference;
+    
+    if (!reference) {
+      const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+      const randomHash = Math.random().toString(36).substring(2, 6).toUpperCase();
+      reference = `VER-${timestamp}-${randomHash}`;
+      
+      // Save reference to doc immediately to keep it stable
+      try {
+        await updateDoc(doc(db, 'products', id), { 
+          verificationReference: reference,
+          verificationRequested: true 
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
+      }
+    }
+
+    // Show payment modal for 99rs
+    setCheckoutData({
+      productId: id,
+      merchantId: data.merchantId,
+      merchantName: data.merchantName,
+      itemName: 'Product Verification',
+      description: 'Pay 99rs to submit verification request. Use the reference code below in your payment note.',
+      amount: 99,
+      currency: 'INR',
+      methods: { ...data.methods, upi: paymentSettings?.upi || data.methods?.upi },
+      createdAt: serverTimestamp(),
+      status: 'active',
+      isVerified: false,
+      verificationRequested: true,
+      isPaymentSubmitted: data.isPaymentSubmitted || false,
+      verificationExpiry: null,
+      coverImage: '',
+      verificationReference: reference
+    });
+    setIsCheckoutOpen(true);
+  };
+
   const handleEnableForever = async (id: string) => {
     try {
       await setDoc(doc(db, 'products', id), { expiresAt: null, status: 'active' }, { merge: true });
@@ -787,7 +925,7 @@ function MainApp() {
 
   const handleExtend24h = async (id: string) => {
     try {
-      await setDoc(doc(db, 'products', id), { expiresAt: Date.now() + (24 * 60 * 60 * 1000), status: 'active' }, { merge: true });
+      await setDoc(doc(db, 'products', id), { expiresAt: Timestamp.fromMillis(Date.now() + (24 * 60 * 60 * 1000)), status: 'active' }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
     }
@@ -1161,6 +1299,7 @@ function MainApp() {
                 {user && (
                   <>
                     <NavItem icon={LayoutDashboard} label="Dashboard" tab="dashboard" />
+                    {user?.email === "harishkumarkrr.t@gmail.com" && <NavItem icon={ShieldCheck} label="Admin" tab="admin" />}
                     <NavItem icon={ImageIcon} label="Create Product" tab="create" />
                     <NavItem icon={Play} label="Playground" tab="playground" />
                     <NavItem icon={Code} label="Integration & API" tab="docs" />
@@ -1379,8 +1518,13 @@ function MainApp() {
                       </div>
                     )}
 
-                    <h1 className="text-4xl font-black text-zinc-900 mb-4 tracking-tight leading-tight">
+                    <h1 className="text-4xl font-black text-zinc-900 mb-4 tracking-tight leading-tight flex items-center gap-3">
                       {hostedProduct.itemName}
+                      {hostedProduct.isVerified && (
+                        <div className="flex items-center" title="Verified">
+                          <VerifiedBadge className="w-8 h-8" />
+                        </div>
+                      )}
                     </h1>
                     {hostedProduct.description && (
                       <p className="text-zinc-500 text-lg mb-8 leading-relaxed whitespace-pre-wrap">
@@ -1633,136 +1777,250 @@ function MainApp() {
                             const currentStatus = (product.data.status ?? 'active') as 'active' | 'paused';
                             const expired = isProductExpired(product.data);
                             return (
-                            <motion.div 
-                              layout
-                              key={product.id} 
-                              className="group flex flex-col bg-white border border-black/[0.05] rounded-xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
-                            >
-                              <div className="h-32 relative overflow-hidden bg-zinc-100">
-                                <img 
-                                  src={product.data.coverImage} 
-                                  alt={product.data.itemName} 
-                                  className={`w-full h-full transition-transform duration-700 group-hover:scale-105 ${product.data.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`} 
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 translate-y-0 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 md:translate-y-[-10px] md:group-hover:translate-y-0">
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDelete(product.id);
-                                    }}
-                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-red-500/30 border border-white/20"
-                                    title="Delete Product"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id);
-                                    }}
-                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-indigo-500/30 border border-white/20"
-                                    title="Copy Embed Code"
-                                  >
-                                    {copiedField === product.id ? <Check size={14} /> : <Code size={14} />}
-                                  </button>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyToClipboard(getShareUrl(product.id), `copy-${product.id}`);
-                                    }}
-                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg shadow-blue-500/30 border border-white/20"
-                                    title="Copy Link"
-                                  >
-                                    {copiedField === `copy-${product.id}` ? <Check size={14} /> : <Copy size={14} />}
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="p-4 flex-1 flex flex-col">
-                                <div className="flex items-start justify-between gap-2 mb-2">
-                                  <h3 className="font-display font-bold text-zinc-900 text-base leading-tight truncate">{product.data.itemName}</h3>
-                                  <div className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded border ${
-                                    expired
-                                      ? 'bg-red-50 text-red-600 border-red-100'
-                                      : currentStatus === 'active'
-                                      ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                      : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                                  }`}>
-                                    {expired ? 'Expired' : currentStatus === 'active' ? 'Active' : 'Paused'}
-                                  </div>
-                                </div>
-                                <div className="mt-auto flex items-center justify-between pt-3 border-t border-zinc-100">
-                                  <p className="text-sm font-bold text-zinc-900">{product.data.currency} {product.data.amount}</p>
-                                  <p className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded">{product.data.views || 0} views</p>
-                                </div>
-                                <div className="flex flex-col gap-1.5 mt-3">
-                                  {expired && (
-                                    <div className="grid grid-cols-2 gap-1.5 mb-1.5">
-                                      <button 
-                                        onClick={() => handleEnableForever(product.id)}
-                                        className="py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5"
-                                      >
-                                        Enable Forever
-                                      </button>
-                                      <button 
-                                        onClick={() => handleExtend24h(product.id)}
-                                        className="py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-500 hover:text-white hover:border-amber-500 text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5"
-                                      >
-                                        Extend 24 hrs
-                                      </button>
+                                <motion.div 
+                                  layout
+                                  key={product.id} 
+                                  className="group flex flex-col bg-white border border-black/[0.05] rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 relative"
+                                >
+                                  {/* Card Header / Image */}
+                                  <div className="h-48 relative overflow-hidden bg-zinc-50 rounded-t-3xl">
+                                    <img 
+                                      src={product.data.coverImage} 
+                                      alt={product.data.itemName} 
+                                      className={`w-full h-full transition-transform duration-1000 group-hover:scale-110 ${product.data.imageFit === 'contain' ? 'object-contain p-6' : 'object-cover'}`} 
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    
+                                    {/* Status Badge */}
+                                    <div className="absolute top-4 left-4 flex gap-2">
+                                      <div className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-xl backdrop-blur-xl border shadow-sm ${
+                                        expired
+                                          ? 'bg-rose-500/90 text-white border-rose-400/50'
+                                          : currentStatus === 'active'
+                                          ? 'bg-emerald-500/90 text-white border-emerald-400/50'
+                                          : 'bg-zinc-500/90 text-white border-zinc-400/50'
+                                      }`}>
+                                        {expired ? 'Expired' : currentStatus === 'active' ? 'Active' : 'Paused'}
+                                      </div>
+                                      {product.data.isVerified && (
+                                        <div className="bg-white/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/50 shadow-sm flex items-center justify-center">
+                                          <VerifiedBadge className="w-4 h-4" />
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
+                                  </div>
 
-                                  <div className="grid grid-cols-3 gap-1.5 mt-0.5">
+                                  {/* Actions Menu Trigger - Moved to card level to avoid overflow-hidden clipping */}
+                                  <div className="absolute top-4 right-4 z-30">
                                     <button 
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setCheckoutData(product.data);
-                                        setIsCheckoutOpen(true);
+                                        setOpenMenuId(openMenuId === product.id ? null : product.id);
                                       }}
-                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
+                                      className="w-10 h-10 rounded-2xl bg-white/90 backdrop-blur-xl border border-white/50 shadow-sm flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:bg-white transition-all"
                                     >
-                                      <Eye size={14} />
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Preview</span>
+                                      <MoreVertical size={18} />
                                     </button>
-                                    {!expired ? (
-                                      <button 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleToggleStatus(product.id, currentStatus);
-                                        }}
-                                        className={`py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm ${
-                                          currentStatus === 'active'
-                                            ? 'text-zinc-600 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100'
-                                            : 'text-zinc-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100'
-                                        }`}
-                                      >
-                                        {currentStatus === 'active' ? <Pause size={14} /> : <Play size={14} />}
-                                        <span className="text-[9px] font-bold uppercase tracking-wider">{currentStatus === 'active' ? 'Pause' : 'Activate'}</span>
-                                      </button>
+                                    
+                                    {/* Dropdown Menu */}
+                                    <AnimatePresence>
+                                      {openMenuId === product.id && (
+                                        <>
+                                          <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                          <motion.div 
+                                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                            className="absolute top-12 right-0 w-56 bg-white rounded-[2rem] shadow-2xl border border-black/[0.05] py-3 z-20 overflow-hidden"
+                                          >
+                                            <button 
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                copyToClipboard(getShareUrl(product.id), `copy-${product.id}`);
+                                                setOpenMenuId(null);
+                                              }}
+                                              className="w-full px-5 py-3 text-left text-xs font-bold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 flex items-center gap-3 transition-colors"
+                                            >
+                                              <div className="w-8 h-8 rounded-xl bg-zinc-50 flex items-center justify-center">
+                                                <Copy size={14} />
+                                              </div>
+                                              Copy Checkout Link
+                                            </button>
+                                            <button 
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                copyToClipboard("<script src=\"" + window.location.origin + "/embed.js\" async><\/script>\n<div data-nopaymentgateway-id=\"" + product.id + "\"><\/div>", product.id);
+                                                setOpenMenuId(null);
+                                              }}
+                                              className="w-full px-5 py-3 text-left text-xs font-bold text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 flex items-center gap-3 transition-colors"
+                                            >
+                                              <div className="w-8 h-8 rounded-xl bg-zinc-50 flex items-center justify-center">
+                                                <Code size={14} />
+                                              </div>
+                                              Copy Embed Code
+                                            </button>
+                                            <div className="h-px bg-zinc-100 my-2 mx-4" />
+                                            <button 
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(product.id);
+                                                setOpenMenuId(null);
+                                              }}
+                                              className="w-full px-5 py-3 text-left text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                                            >
+                                              <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center">
+                                                <Trash2 size={14} />
+                                              </div>
+                                              Delete Product
+                                            </button>
+                                          </motion.div>
+                                        </>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+
+                                {/* Card Content */}
+                                <div className="p-6 flex-1 flex flex-col gap-5">
+                                  <div>
+                                    <h3 className="font-display font-bold text-zinc-900 text-xl leading-tight group-hover:text-emerald-600 transition-colors truncate flex items-center gap-2">
+                                      {product.data.itemName}
+                                      {product.data.isVerified && <VerifiedBadge className="w-5 h-5" />}
+                                    </h3>
+                                    <div className="flex items-center gap-3 mt-2.5">
+                                      <p className="text-lg font-black text-zinc-900">
+                                        {product.data.currency} {product.data.amount}
+                                      </p>
+                                      <div className="w-1.5 h-1.5 rounded-full bg-zinc-200" />
+                                      <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Eye size={14} /> {product.data.views || 0} Views
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Verification Status Banner */}
+                                  {!product.data.isVerified && (
+                                    <div className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${
+                                      product.data.isPaymentSubmitted
+                                        ? 'bg-amber-50 border-amber-100 text-amber-700'
+                                        : product.data.verificationRequested
+                                        ? 'bg-rose-50 border-rose-100 text-rose-700'
+                                        : 'bg-zinc-50 border-zinc-100 text-zinc-500'
+                                    }`}>
+                                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                                        product.data.isPaymentSubmitted
+                                          ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
+                                          : product.data.verificationRequested
+                                          ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
+                                          : 'bg-zinc-200 text-zinc-400'
+                                      }`}>
+                                        {product.data.isPaymentSubmitted ? (
+                                          <Zap size={20} />
+                                        ) : product.data.verificationRequested ? (
+                                          <AlertCircle size={20} />
+                                        ) : (
+                                          <Shield size={20} />
+                                        )}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-black uppercase tracking-wider">
+                                          {product.data.isPaymentSubmitted 
+                                            ? 'Verification Pending' 
+                                            : product.data.verificationRequested
+                                            ? 'Action Required'
+                                            : 'Request Verification'}
+                                        </p>
+                                        <p className="text-[10px] font-medium opacity-70 mt-0.5 leading-tight">
+                                          {product.data.isPaymentSubmitted 
+                                            ? `Ref: ${product.data.verificationReference}` 
+                                            : product.data.verificationRequested
+                                            ? 'Confirm payment to submit'
+                                            : 'Get badge to boost trust & sales'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Bottom Actions */}
+                                  <div className="mt-auto pt-5 border-t border-zinc-100 space-y-3">
+                                    {expired ? (
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <button 
+                                          onClick={() => handleEnableForever(product.id)}
+                                          className="flex-1 py-3.5 rounded-2xl border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-500 hover:text-white transition-all text-[11px] font-black uppercase tracking-wider"
+                                        >
+                                          Enable Forever
+                                        </button>
+                                        <button 
+                                          onClick={() => handleExtend24h(product.id)}
+                                          className="flex-1 py-3.5 rounded-2xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-500 hover:text-white transition-all text-[11px] font-black uppercase tracking-wider"
+                                        >
+                                          Extend 24h
+                                        </button>
+                                      </div>
                                     ) : (
-                                      <div className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-400 flex flex-col items-center justify-center gap-0.5 shadow-sm opacity-50 cursor-not-allowed">
-                                        <Pause size={14} />
-                                        <span className="text-[9px] font-bold uppercase tracking-wider">Expired</span>
+                                      <div className="flex gap-2">
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCheckoutData(product.data);
+                                            setIsCheckoutOpen(true);
+                                          }}
+                                          className="flex-1 py-3.5 rounded-2xl bg-zinc-900 text-white hover:bg-emerald-600 transition-all flex items-center justify-center shadow-xl shadow-zinc-900/10"
+                                          title="Preview"
+                                        >
+                                          <Eye size={20} />
+                                        </button>
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleStatus(product.id, currentStatus);
+                                          }}
+                                          className={`flex-1 py-3.5 rounded-2xl border transition-all flex items-center justify-center ${
+                                            currentStatus === 'active'
+                                              ? 'bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100'
+                                              : 'bg-emerald-50 border-emerald-100 text-emerald-600 hover:bg-emerald-100'
+                                          }`}
+                                          title={currentStatus === 'active' ? 'Pause' : 'Activate'}
+                                        >
+                                          {currentStatus === 'active' ? <Pause size={20} /> : <Play size={20} />}
+                                        </button>
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleShareNative(product.data, product.id);
+                                          }}
+                                          className="flex-1 py-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-all flex items-center justify-center"
+                                          title="Share"
+                                        >
+                                          <Share2 size={20} />
+                                        </button>
                                       </div>
                                     )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleShareNative(product.data, product.id);
-                                      }}
-                                      className="py-1.5 rounded-lg bg-zinc-50 border border-black/[0.03] text-zinc-600 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all duration-300 flex flex-col items-center justify-center gap-0.5 shadow-sm"
-                                    >
-                                      <Share2 size={14} />
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Share</span>
-                                    </button>
+
+                                    {/* Verification CTA if not requested */}
+                                    {!product.data.isVerified && !product.data.verificationRequested && (
+                                      <button 
+                                        onClick={() => handleRequestVerification(product.id, product.data)}
+                                        className="w-full py-3.5 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 text-[11px] font-black uppercase tracking-wider hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                                      >
+                                        <ShieldCheck size={16} /> Get Verified (₹99)
+                                      </button>
+                                    )}
+                                    
+                                    {/* Verification CTA if requested but no reference (Complete payment) */}
+                                    {product.data.verificationRequested && !product.data.isPaymentSubmitted && !product.data.isVerified && (
+                                      <button 
+                                        onClick={() => handleRequestVerification(product.id, product.data)}
+                                        className="w-full py-3.5 rounded-2xl bg-amber-50 text-amber-600 border border-amber-100 text-[11px] font-black uppercase tracking-wider hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                                      >
+                                        <AlertCircle size={16} /> Confirm Payment
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
-
-                              </div>
-                            </motion.div>
-                          )})}
+                              </motion.div>
+                            )
+                          })}
                         </div>
               )}
             </motion.div>
@@ -1918,9 +2176,16 @@ function MainApp() {
 
                   <div className="space-y-8">
                     <div className="space-y-6">
-                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                        Payment Routing
+                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                          Payment Routing
+                        </div>
+                        {products.length > 0 && (
+                          <span className="text-[9px] px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full border border-brand-100">
+                            Pre-filled from latest product
+                          </span>
+                        )}
                       </h3>
                       
                       <div className="space-y-4">
@@ -2014,6 +2279,41 @@ function MainApp() {
                           <p className="text-[11px] text-zinc-500">
                             Example: <span className="font-mono">https://www.paypal.com/checkoutnow?token=...</span>
                           </p>
+                        </div>
+
+                        <div className="p-6 rounded-3xl bg-zinc-50 border border-black/[0.03] space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={verificationRequested}
+                              onChange={(e) => setVerificationRequested(e.target.checked)}
+                              className="w-4 h-4 accent-brand-600"
+                            />
+                            <span className="text-sm font-bold text-zinc-800">Get Verified (99rs/year)</span>
+                          </label>
+                          <p className="text-[11px] text-zinc-500">
+                            Get a verified badge for your product.
+                          </p>
+                          {verificationRequested && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className="mt-4 p-4 bg-brand-50 rounded-2xl border border-brand-100 space-y-2"
+                            >
+                              <div className="flex items-center gap-2 text-brand-700">
+                                <ShieldCheck size={16} />
+                                <span className="text-xs font-bold uppercase tracking-wider">Verification Details</span>
+                              </div>
+                              <p className="text-[11px] text-brand-600 leading-relaxed">
+                                To get verified, you'll need to pay a one-time fee of <strong>99 INR</strong>. 
+                                After creating the product, you'll receive a unique reference code to pay via UPI.
+                              </p>
+                              <div className="pt-2 border-t border-brand-100 flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-brand-500 uppercase">Admin UPI ID:</span>
+                                <code className="text-xs font-mono font-bold text-brand-700">{paymentSettings?.upi || 'slaypay@upi'}</code>
+                              </div>
+                            </motion.div>
+                          )}
                         </div>
 
                         <div className="p-6 rounded-3xl bg-zinc-50 border border-black/[0.03] space-y-3">
@@ -2482,6 +2782,13 @@ function MainApp() {
             </motion.div>
           )}
 
+          {/* ADMIN TAB */}
+          {activeTab === 'admin' && user?.email === "harishkumarkrr.t@gmail.com" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+              <AdminDashboard />
+            </motion.div>
+          )}
+
           {['contact', 'terms', 'privacy'].includes(activeTab) && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
               <div className="premium-card p-10">
@@ -2503,6 +2810,52 @@ function MainApp() {
           )}
         </div>
       </main>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <AnimatePresence>
+        {productToDelete && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setProductToDelete(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-2 bg-red-500" />
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
+                  <Trash2 size={32} className="text-red-500" />
+                </div>
+                <h3 className="text-2xl font-display font-bold text-zinc-900 mb-3">Delete Product?</h3>
+                <p className="text-zinc-500 text-sm leading-relaxed mb-8">
+                  Are you sure you want to delete this product? This action cannot be undone and all associated embed links will stop working.
+                </p>
+                <div className="flex gap-4 w-full">
+                  <button 
+                    onClick={() => setProductToDelete(null)}
+                    className="flex-1 py-4 px-6 rounded-2xl font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmDelete}
+                    className="flex-1 py-4 px-6 rounded-2xl font-bold text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* CUSTOMER CHECKOUT MODAL (Simulated) */}
       <AnimatePresence>
@@ -2566,11 +2919,11 @@ function MainApp() {
                         </div>
                         <h4 className="font-bold text-zinc-900">Pay via UPI</h4>
                       </div>
-                      
+
                       <div className="flex justify-center mb-6">
                         <div className="bg-white p-4 rounded-3xl border border-zinc-100 shadow-xl">
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`upi://pay?pa=${checkoutData.methods.upi}&pn=${encodeURIComponent(checkoutData.merchantName)}&am=${checkoutData.amount}&cu=${checkoutData.currency}`)}`} 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`upi://pay?pa=${checkoutData.methods.upi}&pn=${encodeURIComponent(checkoutData.merchantName)}&am=${checkoutData.amount}&cu=${checkoutData.currency}${checkoutData.verificationReference ? `&tn=${checkoutData.verificationReference}` : ''}`)}`} 
                             alt="UPI QR Code" 
                             className="w-40 h-40"
                             referrerPolicy="no-referrer"
@@ -2588,7 +2941,7 @@ function MainApp() {
                         </button>
                       </div>
                       <a 
-                        href={`upi://pay?pa=${checkoutData.methods.upi}&pn=${encodeURIComponent(checkoutData.merchantName)}&am=${checkoutData.amount}&cu=${checkoutData.currency}`}
+                        href={`upi://pay?pa=${checkoutData.methods.upi}&pn=${encodeURIComponent(checkoutData.merchantName)}&am=${checkoutData.amount}&cu=${checkoutData.currency}${checkoutData.verificationReference ? `&tn=${checkoutData.verificationReference}` : ''}`}
                         className="w-full premium-button premium-button-brand py-4 text-sm flex items-center justify-center"
                       >
                         Open UPI App
@@ -2632,6 +2985,40 @@ function MainApp() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {checkoutData.itemName === 'Product Verification' && (
+                    <div className="mb-6 p-4 bg-zinc-50 rounded-2xl border border-black/[0.03] text-center">
+                      <p className="text-sm text-zinc-600">
+                        After payment, your verification request will be processed. 
+                        <strong> Verification can take up to 24 hours.</strong>
+                      </p>
+                    </div>
+                  )}
+
+                  {checkoutData.itemName === 'Product Verification' && (
+                    <div className="space-y-4">
+                      <p className="text-[11px] text-zinc-500 text-center bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                        If you have already completed the payment, please click below to submit your request for approval.
+                      </p>
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'products', checkoutData.productId!), { 
+                              isPaymentSubmitted: true,
+                              verificationReference: checkoutData.verificationReference
+                            });
+                            setNotification({ message: 'Payment confirmed! Please wait for admin approval.', type: 'success' });
+                            setIsCheckoutOpen(false);
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `products/${checkoutData.productId}`);
+                          }
+                        }}
+                        className="w-full py-4 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                      >
+                        I have paid
+                      </button>
                     </div>
                   )}
 
@@ -2756,15 +3143,246 @@ function MainApp() {
   );
 }
 
+  const AdminDashboard = () => {
+    const paymentSettings = useContext(PaymentSettingsContext);
+    const [localPaymentSettings, setLocalPaymentSettings] = useState(paymentSettings || { upi: '' });
+    const [productToDelete, setProductToDelete] = useState<string | null>(null);
+    const [productFilter, setProductFilter] = useState('all'); // 'all', 'verified', 'unverified'
+    const [saveMessage, setSaveMessage] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+    useEffect(() => {
+      if (saveMessage) {
+        const timer = setTimeout(() => setSaveMessage(null), 3000);
+        return () => clearTimeout(timer);
+      }
+    }, [saveMessage]);
+
+    useEffect(() => {
+      if (paymentSettings) {
+        setLocalPaymentSettings(paymentSettings);
+      }
+    }, [paymentSettings]);
+
+    const [pendingProducts, setPendingProducts] = useState<any[]>([]);
+    const [allProducts, setAllProducts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const q = query(collection(db, 'products'), where('verificationRequested', '==', true), where('isVerified', '==', false));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPendingProducts(products);
+        setLoading(false);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'products');
+      });
+      
+      const qAll = query(collection(db, 'products'));
+      const unsubscribeAll = onSnapshot(qAll, (snapshot) => {
+        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllProducts(products);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'products');
+      });
+      
+      return () => { unsubscribe(); unsubscribeAll(); };
+    }, []);
+
+    const handleApprove = async (id: string) => {
+      await updateDoc(doc(db, 'products', id), { isVerified: true, verificationRequested: false });
+    };
+
+    const handleReject = async (id: string) => {
+      await updateDoc(doc(db, 'products', id), { 
+        verificationRequested: false,
+        verificationReference: null 
+      });
+    };
+
+    const confirmDelete = async () => {
+      if (productToDelete) {
+        try {
+          await deleteDoc(doc(db, 'products', productToDelete));
+          setProductToDelete(null);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `products/${productToDelete}`);
+        }
+      }
+    };
+
+    const filteredProducts = allProducts.filter(p => {
+      if (productFilter === 'verified') return p.isVerified;
+      if (productFilter === 'unverified') return !p.isVerified;
+      return true;
+    });
+
+    if (loading) return <div className="p-6 text-zinc-500">Loading dashboard...</div>;
+
+    return (
+      <div className="p-6 md:p-10 max-w-7xl mx-auto relative">
+        {productToDelete && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+              <h3 className="text-2xl font-bold text-zinc-900 mb-4">Delete Product?</h3>
+              <p className="text-zinc-600 mb-8">Are you sure you want to delete this product? This action cannot be undone.</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setProductToDelete(null)}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <h1 className="text-3xl font-display font-bold text-zinc-900 mb-8">Admin Dashboard</h1>
+        
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-zinc-900 mb-6">Payment Settings</h2>
+          <div className="bg-white p-6 border border-zinc-100 rounded-[2rem] shadow-sm">
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                placeholder="UPI ID" 
+                value={localPaymentSettings?.upi || ''}
+                onChange={(e) => setLocalPaymentSettings({...localPaymentSettings, upi: e.target.value})}
+                className="w-full p-4 rounded-xl border border-zinc-200"
+              />
+              <button 
+                onClick={async () => {
+                  try {
+                    await setDoc(doc(db, 'appSettings', 'payment'), localPaymentSettings);
+                    setSaveMessage({ message: 'Payment settings updated!', type: 'success' });
+                  } catch (err) {
+                    handleFirestoreError(err, OperationType.WRITE, 'appSettings/payment');
+                    setSaveMessage({ message: 'Failed to update settings.', type: 'error' });
+                  }
+                }}
+                className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all"
+              >
+                Save Settings
+              </button>
+              {saveMessage && (
+                <p className={`text-sm font-bold ${saveMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {saveMessage.message}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-zinc-900 mb-6">Verification Requests ({pendingProducts.length})</h2>
+          {pendingProducts.length === 0 ? (
+            <div className="p-8 bg-zinc-50 border border-zinc-100 rounded-[2rem] text-center text-zinc-500">No pending verification requests.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pendingProducts.map(product => (
+                <div key={product.id} className="bg-white p-6 border border-zinc-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
+                  <h3 className="font-bold text-lg text-zinc-900 mb-1">{product.itemName}</h3>
+                  <p className="text-sm text-zinc-500 mb-2">Merchant: {product.merchantName}</p>
+                  {product.verificationReference && (
+                    <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Reference Code</p>
+                      <p className="text-2xl font-black text-emerald-900 tracking-widest">{product.verificationReference}</p>
+                      <p className="text-[10px] text-emerald-700 mt-1">Look for this in your bank statement.</p>
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <button onClick={() => handleApprove(product.id)} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-all">Approve</button>
+                    <button onClick={() => handleReject(product.id)} className="flex-1 px-4 py-3 bg-zinc-100 text-zinc-700 rounded-xl font-bold text-sm hover:bg-zinc-200 transition-all">Reject</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-zinc-900">All Products ({filteredProducts.length})</h2>
+            <select 
+              value={productFilter}
+              onChange={(e) => setProductFilter(e.target.value)}
+              className="bg-white border border-zinc-200 text-zinc-700 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5"
+            >
+              <option value="all">All Products</option>
+              <option value="verified">Verified</option>
+              <option value="unverified">Unverified</option>
+            </select>
+          </div>
+          <div className="bg-white border border-zinc-100 rounded-[2rem] shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-zinc-500 uppercase text-[10px] font-bold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left">Item</th>
+                  <th className="px-6 py-4 text-left">Merchant</th>
+                  <th className="px-6 py-4 text-left">Ref Code</th>
+                  <th className="px-6 py-4 text-left">Status</th>
+                  <th className="px-6 py-4 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {filteredProducts.map(product => (
+                  <tr key={product.id}>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{product.itemName}</td>
+                    <td className="px-6 py-4 text-zinc-600">{product.merchantName}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-zinc-500">{product.verificationReference || '-'}</td>
+                    <td className="px-6 py-4">
+                      {product.isVerified ? 
+                        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold uppercase">Verified</span> : 
+                        <span className="px-2 py-1 bg-zinc-100 text-zinc-600 rounded-lg text-[10px] font-bold uppercase">Unverified</span>
+                      }
+                    </td>
+                    <td className="px-6 py-4">
+                      <button 
+                        onClick={() => setProductToDelete(product.id)}
+                        className="text-red-600 hover:text-red-700 font-bold text-[10px] uppercase"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    );
+  };
+
 export default function App() {
+  const [paymentSettings, setPaymentSettings] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'appSettings', 'payment'), (doc) => {
+      if (doc.exists()) {
+        setPaymentSettings(doc.data());
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'appSettings/payment', false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   return (
-    <BrowserRouter>
-      <ErrorBoundary>
-        <Routes>
-          <Route path="/pay/:productId" element={<MainApp />} />
-          <Route path="/*" element={<MainApp />} />
-        </Routes>
-      </ErrorBoundary>
-    </BrowserRouter>
+    <PaymentSettingsContext.Provider value={paymentSettings}>
+      <BrowserRouter>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/pay/:productId" element={<MainApp />} />
+            <Route path="/*" element={<MainApp />} />
+          </Routes>
+        </ErrorBoundary>
+      </BrowserRouter>
+    </PaymentSettingsContext.Provider>
   );
 }
