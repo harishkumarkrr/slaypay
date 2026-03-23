@@ -45,7 +45,10 @@ import {
   Moon,
   Eye,
   Pause,
-  MoreVertical
+  MoreVertical,
+  Search,
+  Plus,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, loginWithGoogle, logout } from './firebase';
@@ -53,8 +56,12 @@ import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, serverTimestamp, onSnapshot, increment, updateDoc, Timestamp } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
 
-const VerifiedBadge = ({ className = "w-6 h-6" }: { className?: string }) => (
-  <div className={`inline-flex items-center justify-center ${className}`}>
+const VerifiedBadge = ({ size = 20 }: { size?: number }) => (
+  <div 
+    className="inline-flex items-center justify-center shrink-0" 
+    style={{ width: size, height: size }}
+    title="Verified Merchant"
+  >
     <svg viewBox="0 0 24 24" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M12 2L14.81 3.51L17.76 2.51L19.27 5.32L22.22 6.32L21.22 9.27L22.73 12.08L21.22 14.89L22.22 17.84L19.27 18.84L17.76 21.65L14.81 20.65L12 22.16L9.19 20.65L6.24 21.65L4.73 18.84L1.78 17.84L2.78 14.89L1.27 12.08L2.78 9.27L1.78 6.32L4.73 5.32L6.24 2.51L9.19 3.51L12 2Z" fill="#10B981" />
       <path d="M9 12L11 14L15 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -559,8 +566,21 @@ function MainApp() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
+  const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [userSettings, setUserSettings] = useState<{
+    upiId?: string;
+    bankAcc?: string;
+    bankIfsc?: string;
+    cryptoAddress?: string;
+  } | null>(null);
 
+  const stats = {
+    totalProducts: products.length,
+    totalViews: products.reduce((acc, p) => acc + (p.data.views || 0), 0),
+    totalVerified: products.filter(p => p.data.isVerified).length,
+    totalActive: products.filter(p => p.data.status === 'active').length
+  };
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     if (savedTheme) {
@@ -645,6 +665,28 @@ function MainApp() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = onSnapshot(doc(db, 'userSettings', user.uid), (doc) => {
+        if (doc.exists()) {
+          setUserSettings(doc.data() as any);
+        }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, `userSettings/${user.uid}`);
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (userSettings && !upiId && !bankAcc && !cryptoAddress) {
+      if (userSettings.upiId) setUpiId(userSettings.upiId);
+      if (userSettings.bankAcc) setBankAcc(userSettings.bankAcc);
+      if (userSettings.bankIfsc) setBankIfsc(userSettings.bankIfsc);
+      if (userSettings.cryptoAddress) setCryptoAddress(userSettings.cryptoAddress);
+    }
+  }, [userSettings]);
 
   useEffect(() => {
     if (isAuthReady && user) {
@@ -1266,6 +1308,234 @@ function MainApp() {
     );
   }
 
+  const AdminDashboard = () => {
+    const paymentSettings = useContext(PaymentSettingsContext);
+    const [localPaymentSettings, setLocalPaymentSettings] = useState(paymentSettings || { upi: '' });
+    const [productToDelete, setProductToDelete] = useState<string | null>(null);
+    const [productFilter, setProductFilter] = useState('all'); // 'all', 'verified', 'unverified'
+    const [saveMessage, setSaveMessage] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+    useEffect(() => {
+      if (saveMessage) {
+        const timer = setTimeout(() => setSaveMessage(null), 3000);
+        return () => clearTimeout(timer);
+      }
+    }, [saveMessage]);
+
+    const confirmDelete = async () => {
+      if (!productToDelete) return;
+      try {
+        await deleteDoc(doc(db, 'products', productToDelete));
+        setProductToDelete(null);
+        setNotification({ message: 'Product deleted by admin.', type: 'success' });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'products');
+      }
+    };
+
+    const approveProduct = async (id: string) => {
+      try {
+        await updateDoc(doc(db, 'products', id), { isVerified: true, verificationRequested: false });
+        setNotification({ message: 'Product verified successfully.', type: 'success' });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
+      }
+    };
+
+    const rejectProduct = async (id: string) => {
+      try {
+        await updateDoc(doc(db, 'products', id), { isVerified: false, verificationRequested: false });
+        setNotification({ message: 'Product verification rejected.', type: 'success' });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
+      }
+    };
+
+    const filteredAdminProducts = products.filter(p => {
+      if (productFilter === 'verified') return p.data.isVerified;
+      if (productFilter === 'unverified') return !p.data.isVerified;
+      return true;
+    });
+
+    return (
+      <div className="max-w-6xl mx-auto space-y-12 pb-20">
+        {saveMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`fixed top-24 right-8 z-50 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border ${
+              saveMessage.type === 'success' ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-red-500 text-white border-red-400'
+            }`}
+          >
+            {saveMessage.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+            <span className="font-bold text-sm">{saveMessage.message}</span>
+          </motion.div>
+        )}
+
+        {productToDelete && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-black/5">
+              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                <Trash2 size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-zinc-900 text-center mb-2">Confirm Deletion</h3>
+              <p className="text-zinc-500 text-center text-sm mb-8">Are you sure you want to delete this product? This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setProductToDelete(null)}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold text-zinc-500 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <h1 className="text-3xl font-display font-bold text-zinc-900 mb-8">Admin Dashboard</h1>
+        
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-zinc-900 mb-6">Payment Settings</h2>
+          <div className="bg-white p-6 border border-zinc-100 rounded-[2rem] shadow-sm">
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                placeholder="UPI ID" 
+                value={localPaymentSettings?.upi || ''}
+                onChange={(e) => setLocalPaymentSettings({...localPaymentSettings, upi: e.target.value})}
+                className="w-full p-4 rounded-xl border border-zinc-200"
+              />
+              <button 
+                onClick={async () => {
+                  try {
+                    await setDoc(doc(db, 'appSettings', 'payment'), localPaymentSettings);
+                    setSaveMessage({ message: 'Payment settings updated!', type: 'success' });
+                  } catch (err) {
+                    handleFirestoreError(err, OperationType.WRITE, 'appSettings/payment');
+                    setSaveMessage({ message: 'Failed to update settings.', type: 'error' });
+                  }
+                }}
+                className="px-8 py-3 bg-black text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors"
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-zinc-900">All Products</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-zinc-400 uppercase">Filter:</span>
+              <select 
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}
+                className="text-xs font-bold p-2 border border-zinc-200 rounded-lg bg-white outline-none"
+              >
+                <option value="all">All Products</option>
+                <option value="verified">Verified Only</option>
+                <option value="unverified">Unverified Only</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="bg-white border border-zinc-100 rounded-[2rem] shadow-sm overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-100">
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Product</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Merchant</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Reference</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAdminProducts.map((product) => (
+                  <tr key={product.id} className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <img src={product.data.coverImage} className="w-10 h-10 rounded-lg object-cover" referrerPolicy="no-referrer" />
+                        <span className="font-bold text-zinc-900">{product.data.itemName}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-zinc-600">{product.data.merchantName}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-zinc-500">{product.data.verificationReference || '-'}</td>
+                    <td className="px-6 py-4">
+                      {product.data.isVerified ? 
+                        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold uppercase">Verified</span> : 
+                        <span className="px-2 py-1 bg-zinc-100 text-zinc-600 rounded-lg text-[10px] font-bold uppercase">Unverified</span>
+                      }
+                    </td>
+                    <td className="px-6 py-4 flex gap-2">
+                      {product.data.verificationRequested && !product.data.isVerified && (
+                        <>
+                          <button 
+                            onClick={() => approveProduct(product.id)}
+                            className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] uppercase"
+                          >
+                            Approve
+                          </button>
+                          <button 
+                            onClick={() => rejectProduct(product.id)}
+                            className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase"
+                          >
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      <button 
+                        onClick={() => setProductToDelete(product.id)}
+                        className="text-red-600 hover:text-red-700 font-bold text-[10px] uppercase"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'userSettings', user.uid), {
+        upiId,
+        bankAcc,
+        bankIfsc,
+        cryptoAddress,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setNotification({ message: 'Settings updated successfully!', type: 'success' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'userSettings');
+    }
+  };
+
+  const filteredProducts = products.filter(p => 
+    p.data.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.data.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (sortOrder === 'newest') return (b.data.createdAt?.seconds || 0) - (a.data.createdAt?.seconds || 0);
+    if (sortOrder === 'oldest') return (a.data.createdAt?.seconds || 0) - (b.data.createdAt?.seconds || 0);
+    if (sortOrder === 'name') return a.data.itemName.localeCompare(b.data.itemName);
+    return 0;
+  });
+
   return (
     <div className="min-h-screen bg-white text-zinc-800 font-sans flex overflow-hidden selection:bg-emerald-500/30">
       {/* Sidebar */}
@@ -1522,7 +1792,7 @@ function MainApp() {
                       {hostedProduct.itemName}
                       {hostedProduct.isVerified && (
                         <div className="flex items-center" title="Verified">
-                          <VerifiedBadge className="w-8 h-8" />
+                    <VerifiedBadge size={32} />
                         </div>
                       )}
                     </h1>
@@ -1734,24 +2004,67 @@ function MainApp() {
           {activeTab === 'dashboard' && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-10 pb-20">
               
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="premium-card p-6 border-l-4 border-brand-500">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Products</span>
+                    <ShoppingBag size={16} className="text-brand-500" />
+                  </div>
+                  <h3 className="text-3xl font-display font-bold text-zinc-900">{stats.totalProducts}</h3>
+                </div>
+                <div className="premium-card p-6 border-l-4 border-emerald-500">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Views</span>
+                    <Eye size={16} className="text-emerald-500" />
+                  </div>
+                  <h3 className="text-3xl font-display font-bold text-zinc-900">{stats.totalViews}</h3>
+                </div>
+                <div className="premium-card p-6 border-l-4 border-blue-500">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Verified</span>
+                    <VerifiedBadge size={16} />
+                  </div>
+                  <h3 className="text-3xl font-display font-bold text-zinc-900">{stats.totalVerified}</h3>
+                </div>
+                <div className="premium-card p-6 border-l-4 border-amber-500">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Active Links</span>
+                    <ExternalLink size={16} className="text-amber-500" />
+                  </div>
+                  <h3 className="text-3xl font-display font-bold text-zinc-900">{stats.totalActive}</h3>
+                </div>
+              </div>
+
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
+                <div className="flex-1">
                   <h2 className="text-3xl font-display font-bold text-zinc-900">Your Products</h2>
                   <p className="text-zinc-500 mt-1">Manage your active payment links and embed codes.</p>
                 </div>
-                <div className="flex items-center gap-4">
-                  <select 
-                    value={sortOrder} 
-                    onChange={(e) => setSortOrder(e.target.value as any)} 
-                    className="text-sm border border-zinc-200 rounded-lg p-2 bg-white"
-                  >
-                    <option value="newest">Newest</option>
-                    <option value="oldest">Oldest</option>
-                    <option value="name">Name</option>
-                  </select>
-                  <button onClick={() => navigate('/create')} className="premium-button premium-button-brand flex items-center gap-2 self-start md:self-auto">
-                    <ImageIcon size={18} /> New Product
-                  </button>
+                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4">
+                  <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Search products..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none w-full md:w-64"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <select 
+                      value={sortOrder} 
+                      onChange={(e) => setSortOrder(e.target.value as any)} 
+                      className="text-sm border border-zinc-200 rounded-xl p-2 bg-white outline-none"
+                    >
+                      <option value="newest">Newest</option>
+                      <option value="oldest">Oldest</option>
+                      <option value="name">Name</option>
+                    </select>
+                    <button onClick={() => navigate('/create')} className="premium-button premium-button-brand flex items-center gap-2">
+                      <Plus size={18} /> New Product
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1768,12 +2081,7 @@ function MainApp() {
                 </div>
               ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                          {[...products].sort((a, b) => {
-                            if (sortOrder === 'newest') return (b.data.createdAt?.seconds || 0) - (a.data.createdAt?.seconds || 0);
-                            if (sortOrder === 'oldest') return (a.data.createdAt?.seconds || 0) - (b.data.createdAt?.seconds || 0);
-                            if (sortOrder === 'name') return a.data.itemName.localeCompare(b.data.itemName);
-                            return 0;
-                          }).map((product) => {
+                          {sortedProducts.map((product) => {
                             const currentStatus = (product.data.status ?? 'active') as 'active' | 'paused';
                             const expired = isProductExpired(product.data);
                             return (
@@ -1804,7 +2112,7 @@ function MainApp() {
                                       </div>
                                       {product.data.isVerified && (
                                         <div className="bg-white/90 backdrop-blur-xl p-1.5 rounded-xl border border-white/50 shadow-sm flex items-center justify-center">
-                                          <VerifiedBadge className="w-4 h-4" />
+                                          <VerifiedBadge size={16} />
                                         </div>
                                       )}
                                     </div>
@@ -1884,7 +2192,7 @@ function MainApp() {
                                   <div>
                                     <h3 className="font-display font-bold text-zinc-900 text-xl leading-tight group-hover:text-emerald-600 transition-colors truncate flex items-center gap-2">
                                       {product.data.itemName}
-                                      {product.data.isVerified && <VerifiedBadge className="w-5 h-5" />}
+                                      {product.data.isVerified && <VerifiedBadge size={20} />}
                                     </h3>
                                     <div className="flex items-center gap-3 mt-2.5">
                                       <p className="text-lg font-black text-zinc-900">
@@ -1898,7 +2206,17 @@ function MainApp() {
                                   </div>
 
                                   {/* Verification Status Banner */}
-                                  {!product.data.isVerified && (
+                                  {product.data.isVerified ? (
+                                    <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 text-emerald-700 flex items-center gap-4">
+                                      <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center shrink-0">
+                                        <CheckCircle2 size={20} />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-black uppercase tracking-wider">Verified Merchant</p>
+                                        <p className="text-[10px] font-medium opacity-70 mt-0.5 leading-tight">Direct payments enabled</p>
+                                      </div>
+                                    </div>
+                                  ) : (
                                     <div className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${
                                       product.data.isPaymentSubmitted
                                         ? 'bg-amber-50 border-amber-100 text-amber-700'
@@ -2630,6 +2948,68 @@ function MainApp() {
                 </div>
 
                 <div className="mt-10 pt-10 border-t border-zinc-100">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center border border-brand-100">
+                      <CreditCard size={20} className="text-brand-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-zinc-900">Default Payment Methods</h3>
+                      <p className="text-xs text-zinc-500">These will be pre-filled when you create new products.</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleUpdateSettings} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Default UPI ID</label>
+                        <input 
+                          type="text" 
+                          value={upiId} 
+                          onChange={(e) => setUpiId(e.target.value)}
+                          placeholder="e.g. yourname@upi"
+                          className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Default Crypto Address (USDT)</label>
+                        <input 
+                          type="text" 
+                          value={cryptoAddress} 
+                          onChange={(e) => setCryptoAddress(e.target.value)}
+                          placeholder="0x..."
+                          className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Default Bank Account</label>
+                        <input 
+                          type="text" 
+                          value={bankAcc} 
+                          onChange={(e) => setBankAcc(e.target.value)}
+                          placeholder="Account Number"
+                          className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Default Bank IFSC</label>
+                        <input 
+                          type="text" 
+                          value={bankIfsc} 
+                          onChange={(e) => setBankIfsc(e.target.value)}
+                          placeholder="IFSC Code"
+                          className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button type="submit" className="premium-button premium-button-primary">
+                        Save Default Methods
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="mt-10 pt-10 border-t border-zinc-100">
                   <h3 className="text-lg font-bold text-zinc-900 mb-6">Appearance</h3>
                   <div className="flex items-center justify-between p-6 bg-zinc-50 rounded-3xl border border-black/[0.03]">
                     <div className="flex items-center gap-4">
@@ -3142,222 +3522,6 @@ function MainApp() {
     </div>
   );
 }
-
-  const AdminDashboard = () => {
-    const paymentSettings = useContext(PaymentSettingsContext);
-    const [localPaymentSettings, setLocalPaymentSettings] = useState(paymentSettings || { upi: '' });
-    const [productToDelete, setProductToDelete] = useState<string | null>(null);
-    const [productFilter, setProductFilter] = useState('all'); // 'all', 'verified', 'unverified'
-    const [saveMessage, setSaveMessage] = useState<{message: string, type: 'success' | 'error'} | null>(null);
-
-    useEffect(() => {
-      if (saveMessage) {
-        const timer = setTimeout(() => setSaveMessage(null), 3000);
-        return () => clearTimeout(timer);
-      }
-    }, [saveMessage]);
-
-    useEffect(() => {
-      if (paymentSettings) {
-        setLocalPaymentSettings(paymentSettings);
-      }
-    }, [paymentSettings]);
-
-    const [pendingProducts, setPendingProducts] = useState<any[]>([]);
-    const [allProducts, setAllProducts] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-      const q = query(collection(db, 'products'), where('verificationRequested', '==', true), where('isVerified', '==', false));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setPendingProducts(products);
-        setLoading(false);
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'products');
-      });
-      
-      const qAll = query(collection(db, 'products'));
-      const unsubscribeAll = onSnapshot(qAll, (snapshot) => {
-        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAllProducts(products);
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'products');
-      });
-      
-      return () => { unsubscribe(); unsubscribeAll(); };
-    }, []);
-
-    const handleApprove = async (id: string) => {
-      await updateDoc(doc(db, 'products', id), { isVerified: true, verificationRequested: false });
-    };
-
-    const handleReject = async (id: string) => {
-      await updateDoc(doc(db, 'products', id), { 
-        verificationRequested: false,
-        verificationReference: null 
-      });
-    };
-
-    const confirmDelete = async () => {
-      if (productToDelete) {
-        try {
-          await deleteDoc(doc(db, 'products', productToDelete));
-          setProductToDelete(null);
-        } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `products/${productToDelete}`);
-        }
-      }
-    };
-
-    const filteredProducts = allProducts.filter(p => {
-      if (productFilter === 'verified') return p.isVerified;
-      if (productFilter === 'unverified') return !p.isVerified;
-      return true;
-    });
-
-    if (loading) return <div className="p-6 text-zinc-500">Loading dashboard...</div>;
-
-    return (
-      <div className="p-6 md:p-10 max-w-7xl mx-auto relative">
-        {productToDelete && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
-              <h3 className="text-2xl font-bold text-zinc-900 mb-4">Delete Product?</h3>
-              <p className="text-zinc-600 mb-8">Are you sure you want to delete this product? This action cannot be undone.</p>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setProductToDelete(null)}
-                  className="flex-1 py-3 px-4 rounded-xl font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={confirmDelete}
-                  className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        <h1 className="text-3xl font-display font-bold text-zinc-900 mb-8">Admin Dashboard</h1>
-        
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-zinc-900 mb-6">Payment Settings</h2>
-          <div className="bg-white p-6 border border-zinc-100 rounded-[2rem] shadow-sm">
-            <div className="space-y-4">
-              <input 
-                type="text" 
-                placeholder="UPI ID" 
-                value={localPaymentSettings?.upi || ''}
-                onChange={(e) => setLocalPaymentSettings({...localPaymentSettings, upi: e.target.value})}
-                className="w-full p-4 rounded-xl border border-zinc-200"
-              />
-              <button 
-                onClick={async () => {
-                  try {
-                    await setDoc(doc(db, 'appSettings', 'payment'), localPaymentSettings);
-                    setSaveMessage({ message: 'Payment settings updated!', type: 'success' });
-                  } catch (err) {
-                    handleFirestoreError(err, OperationType.WRITE, 'appSettings/payment');
-                    setSaveMessage({ message: 'Failed to update settings.', type: 'error' });
-                  }
-                }}
-                className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all"
-              >
-                Save Settings
-              </button>
-              {saveMessage && (
-                <p className={`text-sm font-bold ${saveMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {saveMessage.message}
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-zinc-900 mb-6">Verification Requests ({pendingProducts.length})</h2>
-          {pendingProducts.length === 0 ? (
-            <div className="p-8 bg-zinc-50 border border-zinc-100 rounded-[2rem] text-center text-zinc-500">No pending verification requests.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pendingProducts.map(product => (
-                <div key={product.id} className="bg-white p-6 border border-zinc-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
-                  <h3 className="font-bold text-lg text-zinc-900 mb-1">{product.itemName}</h3>
-                  <p className="text-sm text-zinc-500 mb-2">Merchant: {product.merchantName}</p>
-                  {product.verificationReference && (
-                    <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
-                      <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Reference Code</p>
-                      <p className="text-2xl font-black text-emerald-900 tracking-widest">{product.verificationReference}</p>
-                      <p className="text-[10px] text-emerald-700 mt-1">Look for this in your bank statement.</p>
-                    </div>
-                  )}
-                  <div className="flex gap-3">
-                    <button onClick={() => handleApprove(product.id)} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-all">Approve</button>
-                    <button onClick={() => handleReject(product.id)} className="flex-1 px-4 py-3 bg-zinc-100 text-zinc-700 rounded-xl font-bold text-sm hover:bg-zinc-200 transition-all">Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-zinc-900">All Products ({filteredProducts.length})</h2>
-            <select 
-              value={productFilter}
-              onChange={(e) => setProductFilter(e.target.value)}
-              className="bg-white border border-zinc-200 text-zinc-700 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5"
-            >
-              <option value="all">All Products</option>
-              <option value="verified">Verified</option>
-              <option value="unverified">Unverified</option>
-            </select>
-          </div>
-          <div className="bg-white border border-zinc-100 rounded-[2rem] shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-zinc-500 uppercase text-[10px] font-bold tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 text-left">Item</th>
-                  <th className="px-6 py-4 text-left">Merchant</th>
-                  <th className="px-6 py-4 text-left">Ref Code</th>
-                  <th className="px-6 py-4 text-left">Status</th>
-                  <th className="px-6 py-4 text-left">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {filteredProducts.map(product => (
-                  <tr key={product.id}>
-                    <td className="px-6 py-4 font-bold text-zinc-900">{product.itemName}</td>
-                    <td className="px-6 py-4 text-zinc-600">{product.merchantName}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-zinc-500">{product.verificationReference || '-'}</td>
-                    <td className="px-6 py-4">
-                      {product.isVerified ? 
-                        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold uppercase">Verified</span> : 
-                        <span className="px-2 py-1 bg-zinc-100 text-zinc-600 rounded-lg text-[10px] font-bold uppercase">Unverified</span>
-                      }
-                    </td>
-                    <td className="px-6 py-4">
-                      <button 
-                        onClick={() => setProductToDelete(product.id)}
-                        className="text-red-600 hover:text-red-700 font-bold text-[10px] uppercase"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    );
-  };
 
 export default function App() {
   const [paymentSettings, setPaymentSettings] = useState<any>(null);
